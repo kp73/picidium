@@ -1,7 +1,7 @@
 pico-8 cartridge // http://www.pico-8.com
 version 29
 __lua__
-dbg=true
+dbg=false
 
 --init
 
@@ -19,13 +19,15 @@ function _init()
 end
 
 function init_title()
+	init_manta()
+	init_formations()
 	init_fighters()
 	init_levels()
-	init_manta()
 	init_bullets()
 	init_dreadnought()
 	init_stars()
 
+	cam_x=0
 	title_drawn=false
 	title_colrs={9,10,7}
 
@@ -34,13 +36,17 @@ function init_title()
 end
 
 function init_ready()
-	ready_time=time()
-	land_time=time()
-	fire_hold_time=time()
-	stop_time=time()
-	wave_time=time()
-	wave_wait=3
+	local t=time()
+	roll_sp=1
+	ready_time=t
+	land_time=t
+	fire_hold_time=t
+	stop_time=t
+	wave_time=t
+	wave_wait=5
 	wave_idx=1
+	wave_fire_time=t
+	wave_fire_wait=2
 	num_runw_hits=0
 	land_now=false
 	fly_secs=30
@@ -51,8 +57,23 @@ function init_ready()
 	_draw=draw_ready
 end
 
+function init_bonus()
+	medi_time=time()
+	wave_idx=0
+	
+	_update60=update_bonus
+	_draw=draw_bonus
+end
+
+function init_destroy_dreadnought()
+	medi_time=time()
+	wave_idx=0
+	
+	_update60=update_destroy_dreadnought
+	_draw=draw_destroy_dreadnought
+end
+
 function init_game()
-	cam_x=0
 	reset_manta()
 
 	_update60=update_game
@@ -93,10 +114,11 @@ function init_manta()
 	}
 	dx_inc=1
 	dx_max=2
-	sp_roll_45=10
+	sp_roll_90=10
 	sp_level=1
 	sp_turn_end=12
-	init_fireballs(50,manta.fireballs)
+	init_fireballs(50,
+		manta.fireballs)
 end
 
 function init_fireballs(c,fireballs)
@@ -113,12 +135,11 @@ function init_bullets()
 	sp_bullet=13
 	sp_bullet_narw=14
 	sp_bullet_roll=15
+	sp_bullet_fighter=121
 end
 
 function init_dreadnought()
-	map_start=0
 	map_end=2164
-	map_bottom=64
 	flg_map_obstacle=0
 	flg_map_runway=6
 	flg_map_run_fi=7
@@ -146,28 +167,62 @@ function init_dreadnought()
 	}		
 end
 
+function init_formations()
+	forms={}
+	forms[1]={
+		xd={12,6,12,6,0},
+		y={10,20,30,40,50},
+		move=move_left	
+	}
+	forms[2]={
+		xd={0,10,20,30,40},
+		y={55,55,55,55,55},
+		move=move_left_loop
+	}
+	forms[3]={
+		xd={-28,-21,-14,-7,0},
+		y={33,33,33,33,33},
+		move=move_right_splt 
+	}
+	forms[4]={
+		xd={0,-9,-18,-27,-36},
+		y={25,28,32,35,38},
+		move=move_right_zip
+	}
+	forms[5]={
+		xd={0,-12,-24,0,0},
+		y={23,23,23,-1,-1},
+		move=move_right_down
+	}
+	forms[6]={
+		xd={-20,-10,0,0,0},
+		y={34,34,34,23,43},
+		move=move_right
+	} // t+90 shape
+end
+
 function init_fighters()
 	fighters={}
 	fighters[1]={
 		sp=79, -- sphere thing
 		right=true,
-		form=1 --staircase fly level
+		form=1
 	}
 	fighters[2]={
 		sp=95, -- donut
 		right=true,
-		form=2 --bottom level then loop fly level
+		form=2
 	}
 	fighters[3]={
 		sp=125, --pincer thing
 		right=false,
-		form=3 --centre unzip to circle
+		form=3
 	}			
 	fighters[4]={
 		sp=127, --twix
 		flp=true,
 		right=false,
-		form=4 --diagonal then something
+		form=4
 	}		
 	fighters[5]={
 		sp=78, --arrow
@@ -183,7 +238,7 @@ function init_fighters()
 		form=6 --middle t
 	}
 	wave={
-		locs={}
+		locns={}
 	}
 end
 
@@ -215,7 +270,8 @@ function init_levels()
 		colr_main=4,
 		colr_shad=0x84 }
 	levels[4]={ name="silver",
-		fighters={1,2,3,4,5,6,2,1,5},
+		--fighters={1,2,3,4,5,6,2,1,5},
+		fighters={4},
 		min_runw_hits=12,
 		colr_space=0,
 		colr_manta=12,
@@ -316,6 +372,7 @@ end
 
 function update_title()
 	if btnp(❎) then
+		default_colrs()
 		init_ready()
 	end
 	
@@ -340,6 +397,20 @@ function update_ready()
 		else 
 			init_title()
 		end
+	else
+		animate_manta_roll(true)
+	end
+end
+
+function update_bonus()
+	if time()-medi_time>1.2
+		or btnp(4)
+		or btnp(❎) then
+		medi_time=time()
+		wave_idx+=1
+	end
+	if wave_idx==7 then
+		init_destroy_dreadnought()	
 	end
 end
 
@@ -366,7 +437,7 @@ function update_manta()
 	if manta.landing 
 		and manta.h==0 then
 		level+=1
-		init_ready()
+		init_bonus()
 	end
 	
 	if not manta.turning 
@@ -393,13 +464,13 @@ function update_manta()
 		manta.y-=1
 	end
 
-	local is_rolled=manta.sp==sp_roll_45
+	local is_rolled=manta.sp==sp_roll_90
 	
 	if not btn(❎) then
 		fire_hold_time=time()
 	elseif time()-fire_hold_time>.25 then
 		if btnp(⬆️) then
-			if is_rolled and manta.flp_v then
+			if m and manta.flp_v then
 				roll_manta_back()
 			else
 				roll_manta(false)
@@ -461,6 +532,17 @@ end
 function update_bullets()
 	foreach(bullets, function(bullet)
 		
+		if bullet.sp==sp_bullet_fighter
+			and (bullet.x>=manta.x
+ 			and bullet.x<=manta.x+16)
+			and (bullet.y>=manta.y
+				and bullet.y<=manta.y+8) 
+			then
+				destroy_manta()
+				del(bullets,bullet)
+				return
+		end
+		
 		local hit_fi=false
 		local hit_obs=hit_map_flg(
 			bullet,flg_map_run_fi)
@@ -475,7 +557,7 @@ function update_bullets()
 			end 
 		end		
  	if not hit_obs 
- 		and not hit_spr then
+ 		and not hit_fi then
  		bullet.move(bullet)
  		local abs_x=bullet.x-cam_x
  		local is_off_scr = 
@@ -554,7 +636,7 @@ end
 
 function update_fighters()
 	if	not landed 
-		and #wave.locs==0
+		and #wave.locns==0
 		and time()-wave_time>wave_wait 
 		then
 			wave_time=time()
@@ -562,35 +644,45 @@ function update_fighters()
 			launch_wave()
 	end
 
-	foreach(wave.locs, 
+	local form=forms[wave.form]
+	foreach(wave.locns, 
 		function(l)
-			update_fighter_x(l)
+			form.move(l)
 			local fighter_offscreen=
 				(wave.right and l.x<cam_x-16)
 				or (not wave.right and l.x>cam_x+144) 
 			if fighter_offscreen then
-				del(wave.locs,l)
+				del(wave.locns,l)
 			end
 	end)
 	
+		-- fire stuff maybe
+	if #wave.locns>1 
+		and time()-wave_fire_time>
+			wave_fire_wait 
+		then
+			wave_fire_time=time()
+			wave_fire_wait=rnd(25)/10
+			local i=flr(rnd(#wave.locns))+1
+			local l=wave.locns[i]
+			local b=new_bullet(l,
+					sp_bullet_fighter)
+					b.dx*=.6
+			add(bullets,b)				
+	end
+
 end
 
-function update_fighter_x(l)
-		local dx=.5
-		local manta_mv=manta.dx>0
-		local wave_mv=not wave.right
-		if wave_mv==manta_mv then
-			dx=abs(manta.dx)+1
-		end
-		if wave.fast then
-			dx+=.5
-		end
-		if wave.right then
-			dx*=-1
-		end
-		dx=dx
-
-		l.x+=dx
+function update_destroy_dreadnought()
+	if time()-medi_time>1.2
+		or btnp(4)
+		or btnp(❎) then
+		medi_time=time()
+		wave_idx+=1
+	end
+	if wave_idx==3 then
+		init_ready()
+	end	
 end
 -->8
 --draw
@@ -599,11 +691,18 @@ function draw_title()
 	if not title_drawn then
 		cls()
 		camera(0,0)	
-		outline("kp73's pico-8 tribute",22,10,5,6)			
-		outline("to the original 1986 c-64",15,18,5,6)			
-		outline("uridium",48,26,5,6)			
-		outline("press ❎",46,107,5,9)
-		draw_logo()
+		default_colrs()
+		local tx="kp73"
+		outline(tx,64-#tx*2,41,5,6)
+		tx="a pico-8 tribute"
+		outline(tx,64-#tx*2,10,5,6)
+		tx="to the original 1986 c-64"			
+		outline(tx,64-#tx*2,18,5,6)
+		tx="uridium"			
+		outline(tx,64-#tx*2,26,5,6)			
+		tx="press ❎"
+		outline(tx,64-#tx*2,107,5,9)
+		draw_logo(7)
 		title_drawn=true
 	end
 	
@@ -623,24 +722,19 @@ function draw_title()
 end
 
 function draw_ready()
-	--default colrs
-	pal(9,9,1)
-	pal(10,10,1)		
-	pal(7,7,1)
-	poke(0x5f15,0x5)
-	poke(0x5f1a,0xa)
-	poke(0x5f19,0x9)
-	poke(0x5f16,0x6)
-	poke(0x5f1d,0xd)
-
 	cls()
 	camera(0,0)
-	outline("player 1",50,44,7,9,4)
+	local tx="player 1"
+	outline(tx,64-#tx*2,44,7,9,4)
 	if (manta.lives>0) then
-		print("game on!",51,57,7,9)
-		outline(manta.lives.."♥ left",50,68,7,9,4)
+		tx="game on!"
+		print(tx,64-#tx*2,57,7,9)
+		tx=manta.lives.."    left"
+		outline(tx,64-#tx*2,68,7,9,4)
+		spr(manta.sp,54,67,1,1,manta.flp)
 	else
-		print("game over!",48,56,7)
+		tx="game over!"
+		print(tx,64-#tx*2,56,7)
 	end
 end
 
@@ -672,12 +766,10 @@ function draw_hud()
 	if dbg then
 		print("cpu "..stat(1)*100,cam_x+41,-39,2)
 		print("fps "..stat(7),cam_x+90,-32,2)
-		print("mem "..stat(0),cam_x+90,-40,2)
+		print("deb "..manta.x,cam_x+90,-40,2)
 	end
-
 	print("1 up ♥"..manta.lives,cam_x+1,-39,7)
 	print(manta.points,cam_x+1,-31,7)
-
 	if land_now then
 		print("land now!",cam_x+53,-31,land_colr)
 	else
@@ -685,7 +777,7 @@ function draw_hud()
 			if time()-slow_time>6 then
 				slow_time=time()
  		end
- 		print("picidium",cam_x+52,-31,7)
+ 		print("picidium",cam_x+52,-31,13)
  	else
  		print(level.."."..levels[level].name,
  			cam_x+52,-31,7)
@@ -752,8 +844,58 @@ function draw_fireballs(
 	end)
 end
 
+function draw_fighters()
+	local i=1
+	foreach(wave.locns, 
+		function(l)
+			spr(wave.sp,l.x,l.y,
+				1,1,wave.flp)
+--			spr_shad(5,wave.sp,
+--				l.x,
+--				l.y,
+--				1,1,
+--				wave.flp,
+--				false,
+--				13
+--				)
+		i+=i
+	end)		
+end
+
+function draw_bonus()
+	local tx="destruction sequence primed!"
+	if wave_idx==1 then
+		default_colrs()
+		camera(0,0)
+		cls()
+	else
+		draw_hud()
+		if wave_idx==2 then
+			outline(tx,64-#tx*2,30,7,8,4)
+		elseif wave_idx==3 then
+			tx="formation annihilation bonus:"
+			outline(tx,64-#tx*2,44,7,8,4)
+		elseif wave_idx==4 then
+			--todo: wave bonus points
+			tx="0".." x 00 = 0000";
+			print(tx,64-#tx*2,58,7,8,4)
+		elseif wave_idx==5 then
+			tx="ship destruct bonus:"
+			outline(tx,64-#tx*2,72,7,8,4)
+		elseif wave_idx==6 then
+			--todo: ship bonus points
+			tx="0".." x 00 = 0000";
+			print(tx,64-#tx*2,86,7,8,4)
+		end
+	end
+end
+
+function draw_destroy_dreadnought()
+end
+
 function spr_shad(depth,sp,
 	x,y,w,h,fh,fv,colr)
+	
 	local shad_x=x+depth
 	local shad_y=y+depth
 	local sheet_start_x=flr(sp%16)*8
@@ -790,40 +932,48 @@ function spr_shad(depth,sp,
 	spr(sp,x,y,w,h,fh,fv)
 end
 
-function draw_fighters()
-	local i=1
-	foreach(wave.locs, 
-		function(l)
-			spr_shad(5,wave.sp,
-				l.x,
-				l.y,
-				1,1,
-				wave.flp,
-				false,
-				13
-				)
-		i+=i
-	end)		
+function default_colrs()
+	--default colrs
+	for i=0x01,0x0f do
+		poke(0x5f00+i,i)
+		pal(i,i,1)
+	end
 end
 -->8
 --animate
 
 function animate_manta()
 	if manta.turning then
- 		if manta.sp==sp_turn_end then 
- 			manta.sp=sp_level
- 			manta.turning=false
- 			manta.flp_h=manta.dx<1 		
- 		elseif time()-manta.anim_time>.04 then
+		if manta.sp>=sp_turn_end then 
+			manta.sp=sp_level
+			manta.turning=false
+			manta.flp_h=manta.dx<1 		
+		elseif time()-manta.anim_time>.04 then
 			manta.anim_time=time()
-   			manta.sp+=1
+			manta.sp+=1
 		end
- 	end
+	end
 	if manta.landing
 		and manta.h>0
 		and time()-stop_time>.3 then
 		manta.h-=.5
 		stop_time=time()
+	end
+end
+
+function animate_manta_roll(right)
+	if time()-manta.anim_time>.05 then
+		manta.anim_time=time()
+		if manta.sp==1 then
+			manta.flp=right
+			manta.sp=12
+		else
+			manta.sp-=1
+			if manta.sp==6 then
+				manta.sp=1
+				manta.flp=not right
+			end
+		end
 	end
 end
 
@@ -844,7 +994,7 @@ function explode(obj,r)
 end
 
 -->8
---fun
+--func
 
 function reset_manta()
 	manta.sp=1
@@ -871,14 +1021,24 @@ function update_map(level)
 end
 
 function new_bullet(orig, sp)
-	local bullet={}
 	local aim_right=orig.dx>0
-	bullet.x=orig.x
-	bullet.y=orig.y
-	bullet.sp=sp
-	bullet.aim=1*dx_max*2
-	bullet.coll_y_min=1
-	bullet.coll_y_max=6
+	local bullet={
+		x=orig.x,
+		y=orig.y,
+		sp=sp,
+		dx=dx_max*2,
+		coll_y_min=1,
+		coll_y_max=6,
+		move=function(this)
+			this.x+=this.dx
+		end
+	}
+	if not aim_right then
+		bullet.dx*=-1
+		bullet.x-=5
+	else
+		bullet.x+=5
+	end
 	if sp==sp_bullet_narw then
 		bullet.coll_y_min=2
 		bullet.coll_y_max=5
@@ -886,12 +1046,6 @@ function new_bullet(orig, sp)
 		bullet.coll_y_min=5
 		bullet.coll_y_max=5
 	end
-	if not aim_right then
-		bullet.aim*=-1
-	end
-	bullet.move=function(this)
-		this.x+=this.aim
-		end
 	return bullet
 end
 
@@ -939,7 +1093,7 @@ function destroy_fighter(hit_fi)
 	explode(e,5)
 	manta.points+=1000
 	sfx(1)
-	del(wave.locs,hit_fi)
+	del(wave.locns,hit_fi)
 end
 
 function fire_bullet()
@@ -949,7 +1103,7 @@ function fire_bullet()
 		or manta.sp==11
 		or manta.sp==12 then
 		sp=sp_bullet_narw
-	elseif manta.sp==sp_roll_45 then
+	elseif manta.sp==sp_roll_90 then
 		sp=sp_bullet_roll
 	end
 	sfx(3)
@@ -973,7 +1127,7 @@ function roll_manta(flp_v)
 	if manta.sp==sp_90_roll then 
 		manta.sp=sp_level
 	else
-		manta.sp=sp_roll_45
+		manta.sp=sp_roll_90
 	end
 	manta.flp_v=flp_v
 	manta.flp_h=manta.dx>0
@@ -988,17 +1142,26 @@ function launch_wave()
 	sfx(4,2)
 	local lf=levels[level].fighters
 	wave=fighters[lf[wave_idx]]
-	wave.locs={}
-	local x=cam_x-64
+	wave.locns={}
+	local x=manta.x-64-16
 	if wave.right then
-		x=cam_x+192
+		x=manta.x+64
 	end
+	dx=1
+	if wave.right then
+		dx=-1
+	end
+	local form=forms[wave.form]
 	for i=1,5 do
-		add(wave.locs,
-			{
-				x=x,
-				y=5+(i*10)
+		local y=form.y[i]
+		if y~=-1 then
+			add(wave.locns,{
+					i=i,
+					x=x+form.xd[i],
+					y=y,
+					dx=dx
 			})
+		end
 	end
 
 	--move to next wave
@@ -1010,10 +1173,91 @@ function launch_wave()
 	
 end
 
+--todo: replace these hacks with something more elegant
+
+function move_left(l)
+		local ldx=1
+		if manta.dx<0 then
+			ldx=dx_max
+		end
+		l.x-=ldx
+end
+
+function move_right(l)
+		local ldx=1
+		if manta.dx>0 then
+			ldx=dx_max
+		end
+		l.x+=ldx
+end
+
+function move_left_loop(l)
+		ldx=1
+		if manta.dx<0 then
+			ldx=dx_max
+		end
+		--todo: make this a loop/circle
+		if manta.x+16>l.x then
+			local a=manta.x-l.x/100
+			l.y+=sin(a)
+		end
+		l.x-=ldx
+end
+
+function move_right_down(l)
+		local ldx=1
+		if manta.dx>0 then
+			ldx=dx_max
+		end
+		l.x+=ldx
+		if l.x>manta.x-16 then
+			l.y+=1
+		end
+end
+
+function move_right_splt(l)
+		local ldx=1
+		if manta.dx>0 then
+			ldx=dx_max
+		end
+		l.x+=ldx
+		local d=manta.x-l.x
+		if d<50 then
+			if l.i%2==0 then
+				if l.y<45 then 
+					l.y+=.5
+				end
+			elseif l.y>22 then
+				l.y-=.5
+			end
+		end
+end
+
+function move_right_zip(l)
+	local ldx=1
+	if manta.dx>0 then
+		ldx=dx_max
+	end
+	l.x+=ldx
+	local d=manta.x-l.x
+	if d<50 then
+		if l.i%2~=0 then
+			if l.y>25 then
+				l.y-=.5
+			end
+		else
+			if l.y<35 then
+				l.y+=.5
+			end		end
+	end
+end
 -->8
 --coll
 
 function hit_map_flg(obj,flg)
+	if obj.sp==sp_bullet_fighter then
+		return
+	end
 	for coll_y=
 		obj.y+obj.coll_y_min,
 		obj.y+obj.coll_y_max do	
@@ -1036,8 +1280,11 @@ function hit_map_flg(obj,flg)
 end
 
 function hit_fighter(obj)
-	for i=1,#wave.locs do
-		local l=wave.locs[i]
+	if obj.sp==sp_bullet_fighter then
+		return
+	end
+	for i=1,#wave.locns do
+		local l=wave.locns[i]
 	
 		for coll_y=
 			obj.y+obj.coll_y_min,
@@ -1097,7 +1344,7 @@ function init_logo()
 end
 
 function draw_logo()
-	local sx,sy=7,50
+	local sx,sy=9,55
 
 	--draw logo and shadow
 	for n=0,3275 do
@@ -1260,93 +1507,93 @@ __gfx__
 6666d57d067d067d067766660000000067d67d6666666666666666665566666666676666666666666666d666666d070707070707070776667777a77009777790
 6666d65777d777d777676666000000006655655666666666767676765666767666676666666666666666d666666d0d0d0d0d0d0d0d0d7666aaaa000000999900
 6666d55ddd0ddd0ddd676666677766666f166f1600000000666666667777777766676666a700007a6666d666666d70707070707070707666aaaaaaaa00777700
-6666d55000000000066766667696d55661666166000000006666666667666766666766660a7007a06666d666666dd0d0d0d0d0d0d0d076669a0009a007aaaaa0
+6666d55000000000066766667696d55661666166777777776666666667666766666766660a7007a06666d666666dd0d0d0d0d0d0d0d076669a0009a007aaaaa0
 6666757070707070767766667969d555665566550000000066666666677777766667666600a77a006666d666666d0707070707070707766609a09a007a9999a9
 6666d15d0d0d0d0d0d6766667696d5556656665600000000666666666766666766676666009aa9006666d666666d0d0d0d0d0d0d0d0d7666077777707a9007a9
 6666d55000000000066766667969d5556f166f1600000000666666666766666d66676666007997006666d666666d70707070707070707666099999907a9007a9
 6666d65777077707776766667696d55561666166000000006666666667ddddd66667666607a00a706666d666666dd0d0d0d0d0d0d0d0766609a09a007a7777a9
-6666d57d067d067d067766667969d55566556655000000006666666667666d66666766667a0000a76666d666666d070707070707070776669a0009a00aaaaa90
+6666d57d067d067d067766667969d55566556655777777776666666667666d66666766667a0000a76666d666666d070707070707070776669a0009a00aaaaa90
 6666d65777077707776766666ddd6655665666560000000066666666dddddddd66676666000000006666d666666d0d0d0d0d0d0d0d0d7666aaaaaaaa00999900
 6666d55ddd0ddd0ddd676666000000006666666600000000f16666666655656666676666666666666666d666666d70707070707070707666077777a077777770
 6666d55000000000066766660000000066666666000000006dd666666505555666676666666666666666d666666dd0d0d0d0d0d0d0d0766609a999409a99a990
-6666d55000000000066766660000000066666666000000001166655655d506d066676666666666666666d666666d0707070707070707766600a000000a90a900
+6666d55000000000066766660000000066666666777777771166655655d506d066676666666666666666d666666d0707070707070707766600a000000a90a900
 6666d55000000000066766660000000066666666000000006dd666665d0d005666676666666666666666d666666d0d0d0d0d0d0d0d0d76667777777aaaaaaaaa
 6666d5500000000006676666000000007d667d660000000011556556650656556666dddddddddddddddd666666667777777777777777666699a999949a99a944
-6666d55000000000066766660000000065566556000000006dd5556665006d0566666666666666666666666666666666666666666666666600a000000a90a900
+6666d55000000000066766660000000065566556777777776dd5556665006d0566666666666666666666666666666666666666666666666600a000000a90a900
 6666d0000000000000076666000000006666666600000000f166555656505556666666666666666666666666666666666666666666666666077777a077777770
 6666d00000000000000766660000000066666666000000006dd66656666556666666666666666666666666666666666666666666666666660999994099999990
 0000000000000000000766666666d0006666666600000000666665566666666666676666000000006666d666000000000000000009aaa9997777770000077770
 0000000000000000000766666666d0006666666600000000666666666660565666676666000000006666d66600000000000000009aaa9000007aaa00777aaa70
-0000000000000000000766666666d000666666660000000066666556665d056666676666000000006666d666000000000000000007d000000777770794949499
-00007777777700000007666666666777666666660000000066666666650060567776666600000000666667770000000000000000999999007aaaaa7a07aaaaa9
-000766666666d0000000dddd6666666666666ddd00000000666666666650d566666666660000000066666666000000000000000007d000007aaaaa9a77777779
-000766666666d00000000000666666666666d00000000000666666666665056666666666000000006666666600000000000000009aaa90000999990994949499
+0000000000000000000766666666d000666666660000000066666556665d056666676666000770006666d666000000000000000007d000000777770794949499
+000077777777000000076666666667776666666600000000666666666500605677766666007aa900666667770000000000000000999999007aaaaa7a07aaaaa9
+000766666666d0000000dddd6666666666666ddd00000000666666666650d56666666666007aa90066666666000000000000000007d000007aaaaa9a77777779
+000766666666d00000000000666666666666d00077777777666666666665056666666666000990006666666600000000000000009aaa90000999990994949499
 000766666666d00000000000666666666666d000000000006666666666650666666666660000000066666666000000000000000009aaa999007aa900007aaa90
 000766666666d00000000000666666666666d0000000000066666666666666666666666600000000666666660000000000000000000000009999990000099990
-ffffff07e5fff78000794c12199052402c67c3f12d4549ab20382cad299dc369a5fa2243a2dd27bb4ee9fe769b0627b19170c161fa9dde9b9e482d899a6bb1e6
-7c3b3d95b285c664bb32767bdebe6bdf67f6b4294f83afc37d17c17ce83e83eae39b62bd7b3e8667d57cdb3e83e5f9bc997ddf343f7cf29def11f3d3bfbe73a0
-b02cdbc3964fb7efbf1ff4190078f5bffefc6f7722f7b6e7f3e15930ee48bc3efbff1cff16dcff2eaccf7fff01f3e3aff3cdff4eff2ffb9bd4eff3ff32eff476
-ef75ffbaf9347eff5ff3be1ff7bffddfffef784cff1fbcf0f38df098cff2fff9beff4ffcd267abef9eff5ff7bfffd3f9cf639f18cff8fffccffaf4fc3e7d76ff
-fe777e17754e9fb08dffcfffeffb70fef39ff5df0bcf0eff17c57d5fff70276efff10101e9cfff5034cf49cf7eec10c2c3bffff0fff72efff54cf52cf19fffb1
-7dcffff8ff943dce5bfcfff19f3ecfdffdf7f7ef5dfff39fffb293d294ca78c34ef72fc3f301e4eff39f1424791148769fbcd9beaf92787c13ff349ff19be851
-2c243c92ff1ff318fdefbdfff79f5eff9f195cf52eff9f4ef7afffcfb3fff76efffdc19fffb3ffff7243effff8dfff79cff3f02c91639c1dfdf7df5f7d8fffb3
-50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ffffff07e5fff78000794c12199052402c67c3f12d4549ab20382cad299dc369a5fa2243a2dd27bb4ee9fe769b0627b19170c161fa9dde9b9e482d899a6bb1e6
-7c3b3d95b285c664bb32767bdebe6bdf67f6b4294f83afc37d17c17ce83e83eae39b62bd7b3e8667d57cdb3e83e4f5e276e57ff0dcf1fb46bf74cf4fcefafd82
-c2807f2f4a1dfe9ffe7cf35420c1e7defbf3bdfd98cfda9fdf8745e08f34874ffbff1cff16dcff2eaccf7fff01f3e3aff3cdff4eff2ffb9bd4eff3ff32eff476
-ef75ffbaff7ccffbef76d3eff6ffbbfffdff098ff3e79f1e70bf1219ff5eff37dff9ef9b5ce47df3dffbeff6fffb7e39fd22f309ff1fff99ff5f9e97cfafceff
-dfee709d3f710bff9fffdff7f0edf72ffbaf169f1cff3e8beabefff04eccfff30202c39fffb0688f929ffcf1270fcefff3cfff98fff711f790f74efff6c53fff
-f3ef72dc2b7de3fff74ef83f7ff7ffdf9f75ffff4efffa4e5f79426d34e12ff397e9f18072fff9cf021abc802c3bcf5eec57df493c3e89ff1acff8c57ca0161a
-1e49ff8ff90cf6ffdefffbcf2fffcf8c2ef21fffc72ff3dff7efd9fff33ffff6e8cfffd9ffff31a1ffff7cefffb4eff9701ec0b94e8efefbefafb6cfffd92041
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ffffff07e5fff78000794c12199052402c67c3f12d4549ab20382cad299dc369a5fa2243a2dd27bb4ee9fe769b0627b19170c161fa9dde9b9e482d899a6bb1e6
-7c3b3d95b285c664bb32767bdebe6bdf67f6b4294f83afc37d17c17ce83e83eae39b62bd7b3e8667d57cdb3e83e4f5e276e57ff0dcf1fb46bf74cf4fcefafd82
-c2807f2f4a1dfe9ffe7cf35420c1e7defbf3bdfd98cfda9fdf8745e08b71874ffbff1cff16dcff2eaccf7fff01f3e3aff3cdff4eff2ffb9bd4eff3ff32eff476
-ef75ffbaf950b9ff7dffca7cffdef77fffbff121ff7cf2f3cf06f3422ffbcff7eaff3df37b8d9eaf7aff7dffdeff7fc72fbd4e702ff3eff33ffbe3d3f8f5f9df
-fbfdd99b19d3f710bff9fffdff7f0edf72ffbaf169f1cff3e8beabefff04eccfff30202c39fffb0688f929ffcd9415e9dfff78fff31ffff22ef21ef8cfffd8b6
-efff7cff4a966fad7efff8cf17efeffefbf3ffaefff9cfff59c7ea521be12f09ff9c3fcf04839fff4e7090d56401e95ef277eabe7ac1e17ccff05ef74ea36580
-b0d07acf7cff40e7bff6ffff5e79ff7e7461f798ff7e39ff9eff3ffecfff99fff7374efffecffff90d8ffff36ffff52fffc380768d4274f7ff5f7df53efffe41
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ffffff07e5fff78000794c12199052402c67c3f12d4549ab20382cad299dc369a5fa2243a2dd27bb4ee9fe769b0627b19170c161fa9dde9b9e482d899a6bb1e6
-7c3b3d95b285c664bb32767bdebe6bdf67f6b4294f83afc37d17c17ce83e83eae39b62bd7b3e8667d57cdb3e83e4f5e276e57ff0dcf1fb46bf74cf4fcefafd82
-c2807f2f4a1dfe9ffe7cf35420c1e7defbf3bdfd98cfda9fdf8745e08b71874ffbff1cff16dcff2eaccf7fff01f3e3aff3cdff4eff2ffb9bd4eff3ff32eff476
-ef75ffbaf950b9ff7dffca7cffdef77fffbff121ff7cf2f3cf06f3422ffbcff7eaff3df37b8d9eaf7aff7dffdeff7fc72fbd4e702ff3eff33ffbe3d3f8f5f9df
-fbfdd7e609d3f710bff9fffdff7f0edf72ffbaf169f1cff3e8beabefff04eccfff30202c39fffb0688f929ffcf1270fcefff3cfff98fff711f790f74efff6c53
-ffff3ef72dc2b7de3fff74ef83f7ff7ffdf9f75ffff4efffa4e579426d34e12ff397e9f18072fff9cf021abc802c3bcf5eec57df493c3e89ff1acff8c57ca016
-1a1e49ff8ff90cf6ffdefffbcf2fffcf8c2ef21fffc72ff3dff7efd9fff33ffff6e8cfffd9ffff31a1ffff7cefffb4eff9701ec0b94e8efefbefafb6cfffd920
-20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ffffff07e5fff78000794c12199052402c67c3f12d4549ab20382cad299dc369a5fa2243a2dd27bb4ee9fe769b0627b19170c161fa9dde9b9e482d899a6bb1e6
-7c3b3d95b285c664bb32767bdebe6bdf67f6b4294f83afc37d17c17ce83e83eae39b62bd7b3e8667d57cdb3e83ead74e276e57ff0dcf1fb46bf74cf4fcefafd8
-2c2807f2f4a1dfe9ffe7cf35420c1e7defbf3bdfd98cfda9fdf8745e083521874ffbff1cff16dcff2eaccf7fff01f3e3aff3cdff4eff2ffb9bd4eff3ff32eff4
-76ef75ffbaff7ccffbef76d3eff6ffbbfffdff098ff3e79f1e70bf1219ff5eff37dff9ef9b5ce47df3dffbeff6fffb7e39fd22f309ff1fff99ff5f9e97cfafce
-ffdfee709d3f710bff9fffdff7f0edf72ffbaf169f1cff3e8beabefff04eccfff30202c39fffb0688f929ffc92154976ffff1efff4cfffb88fb48f32fff73ea9
-ffff1ff396a9db6f9fff32f7c9fbffbffefcfbafff72fff752f8fbe8426d34e12ff397e9f18072fff9cf021abc802c3bcf5eec57df493c3e89ff1acff8c57ca0
-161a1e49ff8ff90cf6ffdefffbcf2fffcf8c2ef21fffc72ff3dff7efd9fff33ffff6e8cfffd9ffff31a1ffff7cefffb4eff9701ec0b94e8efefbefafb6cfffd9
-20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ffffff07e5fff78000794c12199052402c67c3f12d4549ab20382cad299dc369a5fa2243a2dd27bb4ee9fe769b0627b19170c161fa9dde9b9e482d899a6bb1e6
-7c3b3d95b285c664bb32767bdebe6bdf67f6b4294f83afc37d17c17ce83e83eae39b62bd7b3e8667d57cdb3e83eac72f176e57ff0dcf1fb46bf74cf4fcefafd8
-2c2807f2f4a1dfe9ffe7cf35420c1e7defbf3bdfd98cfda9fdf8745e0835e0f8ef7ff38ff3ca9ff5c599ffeff12e7c74ff78bff9cff5ef737b9cff7ef74cff9e
-ccffaef75fff89ff7dffca7cffdef77fffbff121ff7cf2f3cf06f3422ffbcff7eaff3df37b8d9eaf7aff7dffdeff7fc72fb54e702ff3eff33ffbe3d3f8f5f9df
-fbfddf02b7ef206ff3fffbfffe1cbff4ef75f3c2f38ff7c17d57dfff18c99fff70404872fff71c01f352ff935e4e9dfff78fff31ffff22ef21ef8cfffd8b6eff
-f7cff4a956fad7efff8cf17efeffefbf3ffaefff9cfff59c3efa32985f0978cff4e97e702c9cff72f3848e23280fc2f79b37d5f35e0f836ef782ff327d1b2485
-86835ef3ef720fbdf7bffff2fbcff3f32b8fb4cff3f9cff4fff9f77efffccfffb932fff77effff486cffff1bffff29ff7e14833c6293afbffafbefa1fff77aff
-77a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ffffff07e5fff78000794c12199052402c67c3f12d4549ab20382cad299dc369a5fa2243a2dd27bb4ee9fe769b0627b19170c161fa9dde9b9e482d899a6bb1e6
-7c3b3d95b285c664bb32767bdebe6bdf67f6b4294f83afc37d17c17ce83e83eae39b62bd7b3e8667d57cdb3e83ead74e276e57ff0dcf1fb46bf74cf4fcefafd8
-2c2807f2f4a1dfe9ffe7cf35420c1e7defbf3bdfd98cfda9fdf8745e083500e1dffef70ff7853ffb8b23ffdff34cf8f8eff07ff39ffbcff6e639fffcff88ff3d
-99ff5dffaef590b9ff7dffca7cffdef77fffbff121ff7cf2f3cf06f3422ffbcff7eaff3df37b8d9eaf7aff7dffdeff7fc72fbd4e702ff3eff33ffbe3d3f8f5f9
-dffbfdd9ee422fcf50cef7eff7fffd387ff9cffae785e70fff83eabeafff30933ffff08080f4efff2812e7a4ef37a4415e9dfff78fff31ffff22ef21ef8cfffd
-8b6efff7cff4a966fad7efff8cf17efeffefbf3ffaefff9cfff59c3ea32985f0978cff4e97e702c9cff72f3848e23280fc2f79b37d5f35e0f836ef782ff327d1
-b248586835ef3ef720fbdf7bffff2fbcff3f32b8fb4cff3f9cff4fff9f77efffccfffb932fff77effff486cffff1bffff29ff7e14833c6293afbffafbefa1fff
-77a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ffffff07e5fff78000794c12199052402c67c3f12d4549ab20382cad299dc369a5fa2243a2dd27bb4ee9fe769b0627b19170c161fa9dde9b9e482d899a6bb1e6
-7c3b3d95b285c664bb32767bdebe6bdf67f6b4294f83afc37d17c17ce83e83eae39b62bd7b3e8667d57cdb3e83ead74e276e57ff0dcf1fb46bf74cf4fcefafd8
-2c2807f2f4a1dfe9ffe7cf35420c1e7defbf3bdfd98cfda9fdf8745e083500e1dffef70ff7853ffb8b23ffdff34cf8f8eff07ff39ffbcff6e639fffcff88ff3d
-99ff5dffaef590b9ff7dffca7cffdef77fffbff121ff7cf2f3cf06f3422ffbcff7eaff3df37b8d9eaf7aff7dffdeff7fc72fbd4e702ff3eff33ffbe3d3f8f5f9
-dffbfdd7e609d3f710bff9fffdff7f0edf72ffbaf169f1cff3e8beabefff04eccfff30202c39fffb0688f929ffc92434976ffff1efff4cfffb88fb48f32fff73
-ea9ffff1ff396a9db6f9fff32f7c9fbffbffefcfbafff72fff752f8be8426d34e12ff397e9f18072fff9cf021abc802c3bcf5eec57df493c3e89ff1acff8c57c
-a0161a1e49ff8ff90cf6ffdefffbcf2fffcf8c2ef21fffc72ff3dff7efd9fff33ffff6e8cfffd9ffff31a1ffff7cefffb4eff9701ec0b94e8efefbefafb6cfff
-d9200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+ffffff07e5fff7900098842e0f905041a523b98de87e34a9a82575060585b3a17bcde69a5fa2243a252fa9ddee9fe769b0627b19170c161fc746a31a4366aade
+68bd1fce4761c26ba91deb9cee6b7cebe6bdf67f6b429c17c1d7e9be83e8367c17c175f9c539debd1743bbea3eed17c1fe9fd9fedf3cf1df5ef96e7afb4fddf6
+2efb76f3ef9416148f34a1dfe9f5ffdf95420c1efeef0f38df098cf0e8dfeff38bae92f3c9fceff0ffb8ff7cfbff39ffbc3dcff6edccfbfff11f3f3aff3cdff8
+eff4ffbabde71fffaaff7584ef0ffcef76ff7bffd95fff7ff3ce1ff7cff5eff3ff7a4cff5fbcf2fb8df298cff6fffbbeff8ffdd267abef9eff9ff7dfffebf9cf
+a19f3cf2e97cfafcef7e7ee41effed7e7306ffbffff30ffff00cdff4eff5f7c2f78ff7c17d57dfff58c97dfff70efff34cfff788ffff0fcefff48fff30222efb
+4e75f743fffbfffdff03c3bfff71fff73efff74cf32cf19fff32fccfff39ff943bce5bfcfff59fcdd3ff71ff38ff1cff1e77ffff5efffc4ec447bac34eff57e9
+f301e4eff39f142479114872fbd8eb9beaf92787c13fb9cffac57ca0161a1e49ff8ff90cf6f3d5ffff6efffecfbffefbfffdf7e28ffff3cf53fffd72ff3efffe
+fd1e8cfff1afff741a1ffff8ceffff4effb701ec0b94e8eff0efdf7ffd8fff345000000000000000000000000000000000000000000000000000000000000000
+ffffff07e5fff7900098842e0f905041a523b98de87e34a9a82575060585b3a17bcde69a5fa2243a252fa9ddee9fe769b0627b19170c161fc746a31a4366aade
+68bd1fce4761c26ba91deb9cee6b7cebe6bdf67f6b429c17c1d7e9be83e8367c17c175f9c539debd1743bbea3eed17c1fe9fd9fedf3cf1df5ef96e7afb4fddf6
+2efb76f3ef9416148f34a1dfe9f5ffdf95420c1efeef0f38df098cf0e8dfeff38bae92f3c9fceff0ffb8ff7cfbff39ffbc3dcff6edccfbfff11f3f3aff3cdff8
+eff4ffbabde71fffaaff7584ef0ffcef76ff7bffd95fff7ff3ce1ff7cff5eff3ff7a4cff5fbcf2fb8df298cff6fffbbeff8ffdd267abef9eff9ff7dfffebf9cf
+a19f3cf2e97cfafcef7e7ee41effed7e7306ffbffff30ffff00cdff4eff5f7c2f78ff7c17d57dfff58c97dfff70efff34cfff788ffff0fcefff48fff30222efb
+4e75f743fffbfffdff03c3bfff71fff73efff74cf32cf19fff32fccfff39ff943bce5bfcfff59fcdd3ff71ff38ff1cff1e77ffff5efffc4ec447bac34eff57e9
+f301e4eff39f142479114872fbd8eb9beaf92787c13fb9cffac57ca0161a1e49ff8ff90cf6f3d5ffff6efffecfbffefbfffdf7e28ffff3cf53fffd72ff3efffe
+fd1e8cfff1afff741a1ffff8ceffff4effb701ec0b94e8eff0efdf7ffd8fff345000000000000000000000000000000000000000000000000000000000000000
+ffffff07e5fff7900098842e0f905041a523b98de87e34a9a82575060585b3a17bcde69a5fa2243a252fa9ddee9fe769b0627b19170c161fc746a31a4366aade
+68bd1fce4761c26ba91deb9cee6b7cebe6bdf67f6b429c17c1d7e9be83e8367c17c175f9c539debd1743bbea3eed17c1fe9fd9fedf3cf1df5ef96e7afb4fddf6
+2efb76f3ef9416148f34a1dfe9f5ffdf95420c1efeef0f38df098cf0e8dfeff38bae92f3c9fceff0ffb8ff7cfbff39ffbc3dcff6edccfbfff11f3f3aff3cdff8
+eff4ffbabde71fffaaff7584ef0ffcef76ff7bffd95fff7ff3ce1ff7cff5eff3ff7a4cff5fbcf2fb8df298cff6fffbbeff8ffdd267abef9eff9ff7dfffebf9cf
+a19f3cf2e97cfafcef7e7ee41effed7e7306ffbffff30ffff00cdff4eff5f7c2f78ff7c17d57dfff58c97dfff70efff34cfff788ffff0fcefff48fff30222efb
+4e75f743fffbfffdff03c3bfff71fff73efff74cf32cf19fff32fccfff39ff943bce5bfcfff59fcdd3ff71ff38ff1cff1e77ffff5efffc4ec447bac34eff57e9
+f301e4eff39f142479114872fbd8eb9beaf92787c13fb9cffac57ca0161a1e49ff8ff90cf6f3d5ffff6efffecfbffefbfffdf7e28ffff3cf53fffd72ff3efffe
+fd1e8cfff1afff741a1ffff8ceffff4effb701ec0b94e8eff0efdf7ffd8fff345000000000000000000000000000000000000000000000000000000000000000
+ffffff07e5fff7900098842e0f905041a523b98de87e34a9a82575060585b3a17bcde69a5fa2243a252fa9ddee9fe769b0627b19170c161fc746a31a4366aade
+68bd1fce4761c26ba91deb9cee6b7cebe6bdf67f6b429c17c1d7e9be83e8367c17c175f9c539debd1743bbea3eed17c1fe9fd9fedf3cf1df5ef96e7afb4fddf6
+2efb76f3ef9416148f34a1dfe9f5ffdf95420c1efeef0f38df098cf0e8dfeff38bae92f3c9fceff0ffb8ff7cfbff39ffbc3dcff6edccfbfff11f3f3aff3cdff8
+eff4ffbabde71fffaaff7584ef0ffcef76ff7bffd95fff7ff3ce1ff7cff5eff3ff7a4cff5fbcf2fb8df298cff6fffbbeff8ffdd267abef9eff9ff7dfffebf9cf
+a19f3cf2e97cfafcef7e7ee41effed7e7306ffbffff30ffff00cdff4eff5f7c2f78ff7c17d57dfff58c97dfff70efff34cfff788ffff0fcefff48fff30222efb
+4e75f743fffbfffdff03c3bfff71fff73efff74cf32cf19fff32fccfff39ff943bce5bfcfff59fcdd3ff71ff38ff1cff1e77ffff5efffc4ec447bac34eff57e9
+f301e4eff39f142479114872fbd8eb9beaf92787c13fb9cffac57ca0161a1e49ff8ff90cf6f3d5ffff6efffecfbffefbfffdf7e28ffff3cf53fffd72ff3efffe
+fd1e8cfff1afff741a1ffff8ceffff4effb701ec0b94e8eff0efdf7ffd8fff345000000000000000000000000000000000000000000000000000000000000000
+ffffff07e5fff7900098842e0f905041a523b98de87e34a9a82575060585b3a17bcde69a5fa2243a252fa9ddee9fe769b0627b19170c161fc746a31a4366aade
+68bd1fce4761c26ba91deb9cee6b7cebe6bdf67f6b429c17c1d7e9be83e8367c17c175f9c539debd1743bbea3eed17c1fe9fd9fedf3cf1df5ef96e7afb4fddf6
+2efb76f3ef9416148f34a1dfe9f5ffdf95420c1efeef0f38df098cf0e8dfeff38bae92f3c9fceff0ffb8ff7cfbff39ffbc3dcff6edccfbfff11f3f3aff3cdff8
+eff4ffbabde71fffaaff7584ef0ffcef76ff7bffd95fff7ff3ce1ff7cff5eff3ff7a4cff5fbcf2fb8df298cff6fffbbeff8ffdd267abef9eff9ff7dfffebf9cf
+a19f3cf2e97cfafcef7e7ee41effed7e7306ffbffff30ffff00cdff4eff5f7c2f78ff7c17d57dfff58c97dfff70efff34cfff788ffff0fcefff48fff30222efb
+4e75f743fffbfffdff03c3bfff71fff73efff74cf32cf19fff32fccfff39ff943bce5bfcfff59fcdd3ff71ff38ff1cff1e77ffff5efffc4ec447bac34eff57e9
+f301e4eff39f142479114872fbd8eb9beaf92787c13fb9cffac57ca0161a1e49ff8ff90cf6f3d5ffff6efffecfbffefbfffdf7e28ffff3cf53fffd72ff3efffe
+fd1e8cfff1afff741a1ffff8ceffff4effb701ec0b94e8eff0efdf7ffd8fff345000000000000000000000000000000000000000000000000000000000000000
+ffffff07e5fff7900098842e0f905041a523b98de87e34a9a82575060585b3a17bcde69a5fa2243a252fa9ddee9fe769b0627b19170c161fc746a31a4366aade
+68bd1fce4761c26ba91deb9cee6b7cebe6bdf67f6b429c17c1d7e9be83e8367c17c175f9c539debd1743bbea3eed17c1fe9fd9fedf3cf1df5ef96e7afb4fddf6
+2efb76f3ef9416148f34a1dfe9f5ffdf95420c1efeef0f38df098cf0e8dfeff38bae92f3c9fceff0ffb8ff7cfbff39ffbc3dcff6edccfbfff11f3f3aff3cdff8
+eff4ffbabde71fffaaff7584ef0ffcef76ff7bffd95fff7ff3ce1ff7cff5eff3ff7a4cff5fbcf2fb8df298cff6fffbbeff8ffdd267abef9eff9ff7dfffebf9cf
+a19f3cf2e97cfafcef7e7ee41effed7e7306ffbffff30ffff00cdff4eff5f7c2f78ff7c17d57dfff58c97dfff70efff34cfff788ffff0fcefff48fff30222efb
+4e75f743fffbfffdff03c3bfff71fff73efff74cf32cf19fff32fccfff39ff943bce5bfcfff59fcdd3ff71ff38ff1cff1e77ffff5efffc4ec447bac34eff57e9
+f301e4eff39f142479114872fbd8eb9beaf92787c13fb9cffac57ca0161a1e49ff8ff90cf6f3d5ffff6efffecfbffefbfffdf7e28ffff3cf53fffd72ff3efffe
+fd1e8cfff1afff741a1ffff8ceffff4effb701ec0b94e8eff0efdf7ffd8fff345000000000000000000000000000000000000000000000000000000000000000
+ffffff07e5fff7900098842e0f905041a523b98de87e34a9a82575060585b3a17bcde69a5fa2243a252fa9ddee9fe769b0627b19170c161fc746a31a4366aade
+68bd1fce4761c26ba91deb9cee6b7cebe6bdf67f6b429c17c1d7e9be83e8367c17c175f9c539debd1743bbea3eed17c1fe9fd9fedf3cf1df5ef96e7afb4fddf6
+2efb76f3ef9416148f34a1dfe9f5ffdf95420c1efeef0f38df098cf0e8dfeff38bae92f3c9fceff0ffb8ff7cfbff39ffbc3dcff6edccfbfff11f3f3aff3cdff8
+eff4ffbabde71fffaaff7584ef0ffcef76ff7bffd95fff7ff3ce1ff7cff5eff3ff7a4cff5fbcf2fb8df298cff6fffbbeff8ffdd267abef9eff9ff7dfffebf9cf
+a19f3cf2e97cfafcef7e7ee41effed7e7306ffbffff30ffff00cdff4eff5f7c2f78ff7c17d57dfff58c97dfff70efff34cfff788ffff0fcefff48fff30222efb
+4e75f743fffbfffdff03c3bfff71fff73efff74cf32cf19fff32fccfff39ff943bce5bfcfff59fcdd3ff71ff38ff1cff1e77ffff5efffc4ec447bac34eff57e9
+f301e4eff39f142479114872fbd8eb9beaf92787c13fb9cffac57ca0161a1e49ff8ff90cf6f3d5ffff6efffecfbffefbfffdf7e28ffff3cf53fffd72ff3efffe
+fd1e8cfff1afff741a1ffff8ceffff4effb701ec0b94e8eff0efdf7ffd8fff345000000000000000000000000000000000000000000000000000000000000000
+ffffff07e5fff7900098842e0f905041a523b98de87e34a9a82575060585b3a17bcde69a5fa2243a252fa9ddee9fe769b0627b19170c161fc746a31a4366aade
+68bd1fce4761c26ba91deb9cee6b7cebe6bdf67f6b429c17c1d7e9be83e8367c17c175f9c539debd1743bbea3eed17c1fe9fd9fedf3cf1df5ef96e7afb4fddf6
+2efb76f3ef9416148f34a1dfe9f5ffdf95420c1efeef0f38df098cf0e8dfeff38bae92f3c9fceff0ffb8ff7cfbff39ffbc3dcff6edccfbfff11f3f3aff3cdff8
+eff4ffbabde71fffaaff7584ef0ffcef76ff7bffd95fff7ff3ce1ff7cff5eff3ff7a4cff5fbcf2fb8df298cff6fffbbeff8ffdd267abef9eff9ff7dfffebf9cf
+a19f3cf2e97cfafcef7e7ee41effed7e7306ffbffff30ffff00cdff4eff5f7c2f78ff7c17d57dfff58c97dfff70efff34cfff788ffff0fcefff48fff30222efb
+4e75f743fffbfffdff03c3bfff71fff73efff74cf32cf19fff32fccfff39ff943bce5bfcfff59fcdd3ff71ff38ff1cff1e77ffff5efffc4ec447bac34eff57e9
+f301e4eff39f142479114872fbd8eb9beaf92787c13fb9cffac57ca0161a1e49ff8ff90cf6f3d5ffff6efffecfbffefbfffdf7e28ffff3cf53fffd72ff3efffe
+fd1e8cfff1afff741a1ffff8ceffff4effb701ec0b94e8eff0efdf7ffd8fff345000000000000000000000000000000000000000000000000000000000000000
 __gff__
 0000000000000000000000000000000000000000008000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000010100008000000000000000000000000000000100000000000000000000000000000000000000000000000000
 2c08f7f2a4d1eff9efc73f45021c7eedbf3fdbdf89fcadf9fd78540ef84378f4bfffc1ff61cdffe2cafcf7ff103f3efa3fdcffe4fff2bfb94dfe3fff23fe4f67fe57ffabffc7fcbffe673dfe6fffbbffdfff90f83f7ef9e107fb2191ffe5ff73fd9ffeb9c54ed73ffdbffe6fffbfe793df223f90fff1ff99fff5e979fcfaecff
@@ -1371,18 +1618,18 @@ ffffff705eff7f09008948e2f00905145a329bd88ee7439a8a52576050583b1ab7dc6ea9f52a42a3
 e2bf673ffe496141f8431afd9e5ffffd5924c0e1effef083fd90c80f8efdfe3fb8ea293f9ccffe0fff8bffc7bfff93ffcbd3fc6fdeccbfff1ff1f3a3ffc3fd8ffe4fffabdb7ef1ffaaff5748fef0cffe67ffb7ff9df5fff73fecf17ffc5ffe3fffa7c4fff5cb2fbfd82f89fc6fffbfebfff8df2d76bafee9fff97ffdffbe9ffc
 1af9c32f9ec7afcffee7e74ee1ffdee73760fffbff3ff0ff0fc0fd4ffe5f7f2c7ff87f1cd775fdff859cd7ff7fe0ff3fc4ff7f88fffff0ecff4ff8ff0322e2bfe4577f34ffbfffdfff303cfbff17ff7fe3ff7fc43fc21ff9ff23cffcff93ff49b3ecb5cfff5ff9dc3dff17ff83ffc1ffe177ffffe5ffcfe44c74ab3ce4ff759e
 3f104efe3ff9414297118427bf8dbeb9ae9f72781cf39bfcaf5cc70a61a1e194fff89fc06f3f5dffffe6ffeffcfbefbfffdf7f2ef8ff3ffc35ffdf27ffe3ffefdfe1c8ff1ffaff47a1f1ff8fecffffe4ff7b10ceb0498efe0ffefdf7dff8ff430500000000000000000000000000000000000000000000000000000000000000
-ffffff705effff080097c42191092504c2763c1fd25494ba0283c2da92d93c1a4bad57111a956eb95d72cff7b35c30b98d8c030e8bd7ecf6dc744269cc54db0db7e3d9e9ac152c36a3dd91b3dbf675db7ebbb725497a1c7d9eeb388e63c7711c579f5c93eddb7134bbaee3de711ca72f9733affb87e68f5fb2fd237e7af6d76f
-1416847b79d2e8f7fcf7e39f22010ebff6df9fedef44fed6fdfe3f780e873cf08770e98fff87ffc59affc795f9f17f22fe7cf47fb8ffcbffe6ff739bfc8ffe4ffcaf4eff2ffe5fbf4ad8fccffe6f3dfe77ffbfffe1ff91f85f7ef9e30ffb2391ffe7ff74fdbffebac54ed73ffddffe7fffc7e793ff267f90fff3ff9afff7e979
-fcfaec7ffeee7383ecf90bd8fffd7fffff07c0fb4ffe573f2c3ff87f1cd775fdff839cf9ff0b048427ffffc1103f253fba55a23cfbff13ffffe2ff6fc45fc21ff9ff1fd7fcff91ff49d3ecb5cfff3ff9e3fc1ffcfcf3dffffaff2bffff259f6b49ac873ce47ff23c3f104efe3ff9414297118467f9cb9debfa2987c731ff47f9
-1fb98e15c242c329fff13f81dffedbff9ff9e57ffa91c55fe27ffae4fffa3ffd3bffffe6ffef1cf9ff3fff7f2834feff90fdff99fc4f0fc21936c9d1df7ffdf5d7f8ff3f050000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ffffff705eff7f080097c42191092504c2763c1fd25494ba0283c2da92d93c965aaf22342add72bbe49eef67b960721b19071c16afd9edb9e984d298a9b61b6ec7b3d3592b586c46bb2367b7edebb6fd766f4b92f438fa3cd7711cc78ee338ae3eb926dbb7e368765dc7bde338cef7c399d7fd43f3c72fd9fe113f3dfbeb370a
-0bc2bd3c69f47bfefbf14f9100875ffbefcff677227f6b7e3f1e95036e9947fffb1ffc1fd6fc2faecc7fff0ff1e3a3ffc3fd4ffe2fff9bdbe4fff33fe2ff74e67ff5bffa59b0f97ffdcf7afcdffe77ffbfff21f17ffcf2c30ff64322ffcbffe7fa3ffd738b9dae7ffa7ffddffe7fcf27bf4d7e20ffe3ff33ffebd3f3f8f5d9ff
-fbdde706d9f317b0fff9fffd7f0fde7ff2bffa61f9c1ffe3b8aeebff0fe4ccff3f20203cf9ff0b86f829f9cf1f72f0ecff3ffcff89ff7f117f097fe4ff6f5cf3ff3ffe27cdb2d73eff7fe48ff3f77ffffdf957ffffe4ffafe47549623de421ff93e7f98170f2ffc90f12ba8c203ccb5fee5cd74f393c8ef91fcaffc875ac1016
-1a4ef98fff09fcf6dffeffcb2fffcf8f2cfe12ffcf27ffd3ffe7dff9ff33ffffe6c8ffdff9ff3fa1f1ff7fecffbfe4ff7910ceb0498efefeebafbfc6ffdf29bf53000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ffffff705eff7f080097c42191092504c2763c1fd25494ba0283c2da92d93c965aaf22342add72bbe49eef67b960721b19071c16afd9edb9e984d298a9b61b6ec7b3d3592b586c46bb2367b7edebb6fd766f4b92f438fa3cd7711cc78ee338ae3eb926dbb7e368765dc7bde3384e5f2e675ef70fcd1fbf64fb47fcf4ecafdf28
-2c08f7f2a4d1eff9efc73f45021c7eedbf3fdbdf89fcadf9fd78540eb813791efffd0ffe0f6bfe1757e6bfff87f8f1d1ffe1fe27ff97ffcd6df2fff91ff17f3af3bffa5ffd9ce8fcbffe673dfe6fffbbffdfff90f83f7ef9e107fb2191ffe5ff73fd9ffeb9c54ed73ffdbffe6fffbfe793df263f90fff1ff99fff5e979fcfaec
-fffdee736b459ebf80fdcfffefff7bf0fe93ffd50fcb0ffe1fc7755dff7f2067feff0101e1c9ff5f30c44fc97f6ee4c0c2b3fffff0ff27feff45fc25fc91ffbf71cdfffff89f34cd5efbfcff913fcedffffdf7e75ffdff93ffbf92cf96c47ac843fe27cff303e1e4ff931f247419417896bfdcb9ae9f72781cf33f94ff91eb58
-212c349cf21fff13f8edbffdff975ffe9f1f59fc25fe9f4ffea7ffcfbff3ff67feffcd91ffbff3ff7f42e3ffffd8ff7fc9fff3209c61931cfdfdd75f7f8dffbf53000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+ffffff705eff7f09008948e2f00905145a329bd88ee7439a8a52576050583b1ab7dc6ea9f52a42a352f29addeef97e960b26b79171c061f17c643aa13466aaed86dbf1ec74162cb69ad1bec9eeb6c7be6edb6ff7b624c9711c7d9eeb388e63c7711c579f5c93eddb7134bbaee3de711ceff99deffdc31ffde59fe6a7bff4dd6f
+e2bf673ffe496141f8431afd9e5ffffd5924c0e1effef083fd90c80f8efdfe3fb8ea293f9ccffe0fff8bffc7bfff93ffcbd3fc6fdeccbfff1ff1f3a3ffc3fd8ffe4fffabdb7ef1ffaaff5748fef0cffe67ffb7ff9df5fff73fecf17ffc5ffe3fffa7c4fff5cb2fbfd82f89fc6fffbfebfff8df2d76bafee9fff97ffdffbe9ffc
+1af9c32f9ec7afcffee7e74ee1ffdee73760fffbff3ff0ff0fc0fd4ffe5f7f2c7ff87f1cd775fdff859cd7ff7fe0ff3fc4ff7f88fffff0ecff4ff8ff0322e2bfe4577f34ffbfffdfff303cfbff17ff7fe3ff7fc43fc21ff9ff23cffcff93ff49b3ecb5cfff5ff9dc3dff17ff83ffc1ffe177ffffe5ffcfe44c74ab3ce4ff759e
+3f104efe3ff9414297118427bf8dbeb9ae9f72781cf39bfcaf5cc70a61a1e194fff89fc06f3f5dffffe6ffeffcfbefbfffdf7f2ef8ff3ffc35ffdf27ffe3ffefdfe1c8ff1ffaff47a1f1ff8fecffffe4ff7b10ceb0498efe0ffefdf7dff8ff430500000000000000000000000000000000000000000000000000000000000000
+ffffff705eff7f09008948e2f00905145a329bd88ee7439a8a52576050583b1ab7dc6ea9f52a42a352f29addeef97e960b26b79171c061f17c643aa13466aaed86dbf1ec74162cb69ad1bec9eeb6c7be6edb6ff7b624c9711c7d9eeb388e63c7711c579f5c93eddb7134bbaee3de711ceff99deffdc31ffde59fe6a7bff4dd6f
+e2bf673ffe496141f8431afd9e5ffffd5924c0e1effef083fd90c80f8efdfe3fb8ea293f9ccffe0fff8bffc7bfff93ffcbd3fc6fdeccbfff1ff1f3a3ffc3fd8ffe4fffabdb7ef1ffaaff5748fef0cffe67ffb7ff9df5fff73fecf17ffc5ffe3fffa7c4fff5cb2fbfd82f89fc6fffbfebfff8df2d76bafee9fff97ffdffbe9ffc
+1af9c32f9ec7afcffee7e74ee1ffdee73760fffbff3ff0ff0fc0fd4ffe5f7f2c7ff87f1cd775fdff859cd7ff7fe0ff3fc4ff7f88fffff0ecff4ff8ff0322e2bfe4577f34ffbfffdfff303cfbff17ff7fe3ff7fc43fc21ff9ff23cffcff93ff49b3ecb5cfff5ff9dc3dff17ff83ffc1ffe177ffffe5ffcfe44c74ab3ce4ff759e
+3f104efe3ff9414297118427bf8dbeb9ae9f72781cf39bfcaf5cc70a61a1e194fff89fc06f3f5dffffe6ffeffcfbefbfffdf7f2ef8ff3ffc35ffdf27ffe3ffefdfe1c8ff1ffaff47a1f1ff8fecffffe4ff7b10ceb0498efe0ffefdf7dff8ff430500000000000000000000000000000000000000000000000000000000000000
+ffffff705eff7f09008948e2f00905145a329bd88ee7439a8a52576050583b1ab7dc6ea9f52a42a352f29addeef97e960b26b79171c061f17c643aa13466aaed86dbf1ec74162cb69ad1bec9eeb6c7be6edb6ff7b624c9711c7d9eeb388e63c7711c579f5c93eddb7134bbaee3de711ceff99deffdc31ffde59fe6a7bff4dd6f
+e2bf673ffe496141f8431afd9e5ffffd5924c0e1effef083fd90c80f8efdfe3fb8ea293f9ccffe0fff8bffc7bfff93ffcbd3fc6fdeccbfff1ff1f3a3ffc3fd8ffe4fffabdb7ef1ffaaff5748fef0cffe67ffb7ff9df5fff73fecf17ffc5ffe3fffa7c4fff5cb2fbfd82f89fc6fffbfebfff8df2d76bafee9fff97ffdffbe9ffc
+1af9c32f9ec7afcffee7e74ee1ffdee73760fffbff3ff0ff0fc0fd4ffe5f7f2c7ff87f1cd775fdff859cd7ff7fe0ff3fc4ff7f88fffff0ecff4ff8ff0322e2bfe4577f34ffbfffdfff303cfbff17ff7fe3ff7fc43fc21ff9ff23cffcff93ff49b3ecb5cfff5ff9dc3dff17ff83ffc1ffe177ffffe5ffcfe44c74ab3ce4ff759e
+3f104efe3ff9414297118427bf8dbeb9ae9f72781cf39bfcaf5cc70a61a1e194fff89fc06f3f5dffffe6ffeffcfbefbfffdf7f2ef8ff3ffc35ffdf27ffe3ffefdfe1c8ff1ffaff47a1f1ff8fecffffe4ff7b10ceb0498efe0ffefdf7dff8ff430500000000000000000000000000000000000000000000000000000000000000
 __sfx__
 00070000266101d620326300563016630386302363004630326202b6200e62036610046102c6103260021600346002a6000460019600226001160013600066000a60004600066000160002600016000060000600
 000300001b620276201b6201162021620266102361013610246101e61021610126100961007610006100661004610046100761002610056100161000600006000060000600006000060000600006000060000600
