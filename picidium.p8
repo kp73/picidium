@@ -374,8 +374,7 @@ function update_title()
 	if btnp(❎) then
 		default_colrs()
 		init_ready()
-	end
-	
+	end	
 	if dbg and btnp(4) then
 		level+=1
 		if level==15 then
@@ -546,26 +545,26 @@ function update_bullets()
 		local hit_fi=false
 		local hit_obs=hit_map_flg(
 			bullet,flg_map_run_fi)
- 	if hit_obs then
- 		del(bullets,bullet)
-			destroy_obstacle(hit_obs)
-		else 
-			hit_fi=hit_fighter(bullet)
-	 	if hit_fi then
-	 		del(bullets,bullet)
-				destroy_fighter(hit_fi)
-			end 
-		end		
- 	if not hit_obs 
- 		and not hit_fi then
- 		bullet.move(bullet)
- 		local abs_x=bullet.x-cam_x
- 		local is_off_scr = 
- 		 abs_x<0 or abs_x>128
- 		if is_off_scr then
- 			del(bullets,bullet)
- 		end
- 	end
+		if hit_obs then
+			del(bullets,bullet)
+				destroy_obstacle(hit_obs)
+			else 
+				hit_fi=hit_fighter(bullet)
+			if hit_fi then
+				del(bullets,bullet)
+					destroy_fighter(hit_fi)
+				end 
+			end		
+		if not hit_obs 
+			and not hit_fi then
+			bullet.move(bullet)
+			local abs_x=bullet.x-cam_x
+			local is_off_scr = 
+			abs_x<0 or abs_x>128
+			if is_off_scr then
+				del(bullets,bullet)
+			end
+		end
 
 	end)	
 end
@@ -895,40 +894,36 @@ end
 
 function spr_shad(depth,sp,
 	x,y,w,h,fh,fv,colr)
-	
 	local shad_x=x+depth
 	local shad_y=y+depth
 	local sheet_start_x=flr(sp%16)*8
 	local sheet_start_y=flr(sp/16)*8
 	local colr_space=levels[level].colr_space
-	
 	for vert=0,7 do
-	 local sheet_y=sheet_start_y
-	 if fv then
+		local sheet_y=sheet_start_y
+		if fv then
 			sheet_y+=7-vert
-	 else
-			sheet_y+=vert
-	 end
-	
-	 for horiz=0,7 do
+		else
+		sheet_y+=vert
+		end
+
+		for horiz=0,7 do
 			local sheet_x=sheet_start_x
 			if fh then
-			  sheet_x+=7-horiz
+				sheet_x+=7-horiz
 			else
-			  sheet_x+=horiz
+				sheet_x+=horiz
 			end
 			s=sget(sheet_x,sheet_y)
 			if s~=0 then
 				local p=pget(shad_x+horiz,shad_y+vert)
 				if p~=colr_space then			
-			 	pset(shad_x+horiz,
-			 		shad_y+vert,colr)
+					pset(shad_x+horiz,
+					shad_y+vert,colr)
 				end
 			end				
-		end
-	
+		end	
 	end
-	
 	spr(sp,x,y,w,h,fh,fv)
 end
 
@@ -978,19 +973,19 @@ function animate_manta_roll(right)
 end
 
 function explode(obj,r)
-	foreach(obj.fireballs, 
-		function(f)
-			if not f.active then
-				f.active=true
-				f.x=obj.x
-				f.y=obj.y+1			
-				f.dx=-.5+rnd(1)
-				f.dy=-.5+rnd(1)
-				f.mass=.5+rnd(1)
-				f.r=.5+rnd(r)
-				f.c=6
-			end
-		end)
+foreach(obj.fireballs, 
+	function(f)
+		if not f.active then
+			f.active=true
+			f.x=obj.x
+			f.y=obj.y+1			
+			f.dx=-.5+rnd(1)
+			f.dy=-.5+rnd(1)
+			f.mass=.5+rnd(1)
+			f.r=.5+rnd(r)
+			f.c=6
+		end
+	end)
 end
 
 -->8
@@ -1075,7 +1070,7 @@ function destroy_obstacle(hit)
 	explode(e,obst.fireball_r)
 	manta.points+=obst.points
 	if obst.points>25 then
-	 num_runw_hits+=1	
+		num_runw_hits+=1	
 	end
 	sfx(obst.sfx)
 	mset(hit.mx,hit.my,obst.sp_dmg)
@@ -1156,10 +1151,10 @@ function launch_wave()
 		local y=form.y[i]
 		if y~=-1 then
 			add(wave.locns,{
-					i=i,
-					x=x+form.xd[i],
-					y=y,
-					dx=dx
+				i=i,
+				x=x+form.xd[i],
+				y=y,
+				dx=dx
 			})
 		end
 	end
@@ -1176,61 +1171,61 @@ end
 --todo: replace these hacks with something more elegant
 
 function move_left(l)
-		local ldx=1
-		if manta.dx<0 then
-			ldx=dx_max
-		end
-		l.x-=ldx
+	local ldx=1
+	if manta.dx<0 then
+		ldx=dx_max
+	end
+	l.x-=ldx
 end
 
 function move_right(l)
-		local ldx=1
-		if manta.dx>0 then
-			ldx=dx_max
-		end
-		l.x+=ldx
+	local ldx=1
+	if manta.dx>0 then
+		ldx=dx_max
+	end
+	l.x+=ldx
 end
 
 function move_left_loop(l)
-		ldx=1
-		if manta.dx<0 then
-			ldx=dx_max
-		end
-		--todo: make this a loop/circle
-		if manta.x+16>l.x then
-			local a=manta.x-l.x/100
-			l.y+=sin(a)
-		end
-		l.x-=ldx
+	ldx=1
+	if manta.dx<0 then
+		ldx=dx_max
+	end
+	--todo: make this a loop/circle
+	if manta.x+16>l.x then
+		local a=manta.x-l.x/100
+		l.y+=sin(a)
+	end
+	l.x-=ldx
 end
 
 function move_right_down(l)
-		local ldx=1
-		if manta.dx>0 then
-			ldx=dx_max
-		end
-		l.x+=ldx
-		if l.x>manta.x-16 then
-			l.y+=1
-		end
+	local ldx=1
+	if manta.dx>0 then
+		ldx=dx_max
+	end
+	l.x+=ldx
+	if l.x>manta.x-16 then
+		l.y+=1
+	end
 end
 
 function move_right_splt(l)
-		local ldx=1
-		if manta.dx>0 then
-			ldx=dx_max
-		end
-		l.x+=ldx
-		local d=manta.x-l.x
-		if d<50 then
-			if l.i%2==0 then
-				if l.y<45 then 
-					l.y+=.5
-				end
-			elseif l.y>22 then
-				l.y-=.5
+	local ldx=1
+	if manta.dx>0 then
+		ldx=dx_max
+	end
+	l.x+=ldx
+	local d=manta.x-l.x
+	if d<50 then
+		if l.i%2==0 then
+			if l.y<45 then 
+				l.y+=.5
 			end
+		elseif l.y>22 then
+			l.y-=.5
 		end
+	end
 end
 
 function move_right_zip(l)
@@ -1284,25 +1279,21 @@ function hit_fighter(obj)
 		return
 	end
 	for i=1,#wave.locns do
-		local l=wave.locns[i]
-	
+		local l=wave.locns[i]	
 		for coll_y=
 			obj.y+obj.coll_y_min,
 			obj.y+obj.coll_y_max do	
 			if manta.flp_v 
 				and obj.sp==sp_bullet_roll then
 				coll_y-=3
-			end
-		
+			end		
 			if obj.x>=l.x
 				and obj.x<=l.x+7
 				and coll_y>=l.y
 				and coll_y<=l.y+7 then
 				return l
-			end
-			
-		end
-	
+			end			
+		end	
 	end
 end
 
@@ -1351,7 +1342,6 @@ function draw_logo()
 		if(g[n])pset(n%w+sx,n\w+sy,g[n])
 	end
 end
-
 
 -- px9 decompress, memory-only
 -- 273 tokens
