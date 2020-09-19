@@ -37,43 +37,34 @@ end
 
 function init_ready()
 	local t=time()
-	roll_sp=1
-	ready_time=t
-	land_time=t
-	fire_hold_time=t
-	stop_time=t
-	wave_time=t
+	ready_last_t=t
+	land_last_t=t
+	fire_hold_last_t=t
+	stop_last_t=t
+	wave_last_t=t
 	wave_wait=5
 	wave_idx=1
-	wave_fire_time=t
+	wave_fire_last_t=t
 	wave_fire_wait=2
 	num_runw_hits=0
-	land_now=false
 	fly_secs=30
-	land_colr=6
-	update_map(level)
+	land_now_txt_colr=6
+	set_map(level)
 
 	_update60=update_ready
 	_draw=draw_ready
 end
 
 function init_bonus()
-	medi_time=time()
+	medm_last_t=time()
 	wave_idx=0
 	
 	_update60=update_bonus
 	_draw=draw_bonus
 end
 
-function init_destroy_dreadnought()
-	medi_time=time()
-	wave_idx=0
-	
-	_update60=update_destroy_dreadnought
-	_draw=draw_destroy_dreadnought
-end
-
 function init_game()
+	set_colrs()
 	reset_manta()
 
 	_update60=update_game
@@ -102,7 +93,7 @@ function init_manta()
 		flp_v=false,
 		dx=2,
 		dy=0,
-		anim_time=time(),
+		anim_last_t=time(),
 		turning=false,
 		destroyed=false,
 		coll_y_min=0,
@@ -110,13 +101,26 @@ function init_manta()
 		points=0,
 		lives=3,
 		fireballs={},
-		landing
+		landing,
+		takingoff
 	}
 	dx_inc=1
 	dx_max=2
 	sp_roll_90=10
 	sp_level=1
 	sp_turn_end=12
+	spin_rev=false
+	spin_ani_i=2
+	spin_ani={
+		{01,true},
+		{12,false},
+		{11,false},
+		{10,false},
+		{09,false},
+		{08,false},
+		{07,false},
+		{06,false}
+	}
 	init_fireballs(50,
 		manta.fireballs)
 end
@@ -147,9 +151,9 @@ function init_dreadnought()
 	sp_damage_sm=119
 	sp_run_fi=87
 	sp_thing=21	
-	fast_time=time()
-	medi_time=time()
-	slow_time=time()
+	fast_last_t=time()
+	medm_last_t=time()
+	slow_last_t=time()
 	beacon_colr=8
 	explosions={}
 	obstacles={}
@@ -164,39 +168,60 @@ function init_dreadnought()
 		sp_dmg=sp_damage_sm,
 		sfx=2,
 		fireball_r=3
-	}		
+	}
+	obstacles[1]={
+		points=0,
+		sp_dmg=99,
+		sfx=2,
+		fireball_r=3
+	}			
+end
+
+function init_destroy_dreadnought()
+	medm_last_t=time()
+	wave_idx=0
+	land_now=false
+	manta.dx=2
+	manta.landing=false
+	manta.takingoff=true
+	expl_at_x=(manta.x/8)+10
+	expl_wait=.075
+	set_colrs()
+			
+	_update60=update_destroy_dreadnought
+	_draw=draw_destroy_dreadnought
 end
 
 function init_formations()
-	forms={}
-	forms[1]={
+	formtn={}
+	formtn[1]={
 		xd={12,6,12,6,0},
 		y={10,20,30,40,50},
 		move=move_left	
 	}
-	forms[2]={
+	formtn[2]={
 		xd={0,10,20,30,40},
 		y={55,55,55,55,55},
 		move=move_left_loop
 	}
-	forms[3]={
+	formtn[3]={
 		xd={-28,-21,-14,-7,0},
 		y={33,33,33,33,33},
 		move=move_right_splt 
 	}
-	forms[4]={
+	formtn[4]={
 		xd={0,-9,-18,-27,-36},
 		y={25,28,32,35,38},
 		move=move_right_zip
 	}
-	forms[5]={
+	formtn[5]={
 		xd={0,-12,-24,0,0},
 		y={23,23,23,-1,-1},
 		move=move_right_down
 	}
-	forms[6]={
-		xd={-20,-10,0,0,0},
-		y={34,34,34,23,43},
+	formtn[6]={
+		xd={-28,-14,0,0,0},
+		y={34,34,34,20,47},
 		move=move_right
 	} // t+90 shape
 end
@@ -206,36 +231,36 @@ function init_fighters()
 	fighters[1]={
 		sp=79, -- sphere thing
 		right=true,
-		form=1
+		formtn=1
 	}
 	fighters[2]={
 		sp=95, -- donut
 		right=true,
-		form=2
+		formtn=2
 	}
 	fighters[3]={
 		sp=125, --pincer thing
 		right=false,
-		form=3
+		formtn=3
 	}			
 	fighters[4]={
 		sp=127, --twix
 		flp=true,
 		right=false,
-		form=4
+		formtn=4
 	}		
 	fighters[5]={
 		sp=78, --arrow
 		fast=true,
 		flp=false,
 		right=false,
-		form=5 --middle then diag
+		formtn=5 --middle then diag
 	}	
 	fighters[6]={
 		sp=111, --h thing
 		flp=false,
 		right=false,
-		form=6 --middle t
+		formtn=6 --middle t
 	}
 	wave={
 		locns={}
@@ -350,7 +375,7 @@ function init_levels()
 		colr_manta2=8,
 		colr_main=5,
 		colr_shad=0x85 }
-	levels[14]={ name="galactium",
+	levels[13]={ name="galactium",
 		fighters={1,2,3,4,5,6,2,1,5},
 		min_runw_hits=12,
 		colr_space=0,
@@ -358,7 +383,7 @@ function init_levels()
 		colr_manta2=0x8b,
 		colr_main=13,
 		colr_shad=0x8d }
-	levels[14]={ name="picidium",
+	levels[13]={ name="picidium",
 		fighters={1,2,3,4,5,6,2,1,5},
 		min_runw_hits=12,
 		colr_space=0,
@@ -377,18 +402,18 @@ function update_title()
 	end	
 	if dbg and btnp(4) then
 		level+=1
-		if level==15 then
+		if level==#levels+1 then
 			level=1
 		end
 	end
 end
 
 function update_ready()
-	if level==15 then
+	if level==#levels+1 then
 		level=1
 	end
-	if time()-ready_time>3
-		or btnp(❎) then 
+	local dt=time()-ready_last_t
+	if dt>3	or (dt>1 and btnp(❎)) then 
 		if (manta.lives>0) then 
 	
 			--todo: warp to dreadnought
@@ -397,19 +422,7 @@ function update_ready()
 			init_title()
 		end
 	else
-		animate_manta_roll(true)
-	end
-end
-
-function update_bonus()
-	if time()-medi_time>1.2
-		or btnp(4)
-		or btnp(❎) then
-		medi_time=time()
-		wave_idx+=1
-	end
-	if wave_idx==7 then
-		init_destroy_dreadnought()	
+		animate_manta_spin(true)
 	end
 end
 
@@ -427,7 +440,7 @@ function update_manta()
 	update_fireballs(manta.fireballs)
 	
 	if manta.destroyed then
-		if time()-destroy_time>2.5 then
+		if time()-destroy_last_t>2.5 then
 			init_ready()
 		end
 		return
@@ -435,12 +448,12 @@ function update_manta()
 	
 	if manta.landing 
 		and manta.h==0 then
-		level+=1
 		init_bonus()
 	end
 	
 	if not manta.turning 
-		and not manta.landing then
+		and not manta.landing 
+		and not manta.takingoff then
 		if btnp(⬅️) then 
 			manta_acc(-1)
 		end
@@ -448,26 +461,32 @@ function update_manta()
 			manta_acc(1)
 		end
 	end	
-
-	if hit_map_flg(manta,
+	
+	if not manta.takingoff
+		and hit_map_flg(manta,
 		flg_map_obstacle) then
 		destroy_manta()
 	else
 		manta.x+=manta.dx
 	end
 			
-	if btn(⬇️)	and manta.y<62 then
+	if btn(⬇️)	
+		and not manta.landing 
+		and manta.y<62 then
 		manta.y+=1
 	end
-	if btn(⬆️)	and manta.y>2 then
+	if btn(⬆️)	
+		and not manta.landing 
+		and manta.y>2 then
 		manta.y-=1
 	end
 
-	local is_rolled=manta.sp==sp_roll_90
+	local is_rolled=
+		manta.sp==sp_roll_90
 	
 	if not btn(❎) then
-		fire_hold_time=time()
-	elseif time()-fire_hold_time>.25 then
+		fire_hold_last_t=time()
+	elseif time()-fire_hold_last_t>.25 then
 		if btnp(⬆️) then
 			if m and manta.flp_v then
 				roll_manta_back()
@@ -487,6 +506,10 @@ function update_manta()
 		fire_bullet()
 	end
 	
+	if dbg and btnp(4) then 
+		land_now=true
+	end
+		
 	local too_far_left=manta.x<1
 	if too_far_left then
 		manta.dx=dx_inc
@@ -496,6 +519,9 @@ function update_manta()
 		if too_far_right then
 			manta.dx=-dx_inc
 			manta.turning=true
+			if manta.takingoff then
+				manta.dx*=2
+			end
 		end
 	end
 	
@@ -507,7 +533,8 @@ function update_manta()
 		manta.coll_y_max=7
 	end	
 	
-	if not is_rolled
+	if not manta.landing
+	 and not is_rolled
 		and not manta.turning
 		and land_now
 		and manta.dx>0
@@ -516,12 +543,13 @@ function update_manta()
 		manta.flp_h=false
 		manta.dx=.25
 		manta.landing=true
+		manta.h+=1
 	end
 
 end
 
-function update_cam()
-	if not manta.landing
+function update_cam(override)
+	if (not manta.landing or override)
 		and not manta.destoryed then
   		cam_x=manta.x-64
   		camera(cam_x,-40)
@@ -531,7 +559,11 @@ end
 function update_bullets()
 	foreach(bullets, function(bullet)
 		
-		if bullet.sp==sp_bullet_fighter
+		--todo: fighter bullets should
+		-- not destroy turning manta
+		if not manta.landing
+			and not manta.takingoff 
+			and bullet.sp==sp_bullet_fighter
 			and (bullet.x>=manta.x
  			and bullet.x<=manta.x+16)
 			and (bullet.y>=manta.y
@@ -542,6 +574,8 @@ function update_bullets()
 				return
 		end
 		
+		--todo: manta bullets should
+		-- destroy figher bullets?
 		local hit_fi=false
 		local hit_obs=hit_map_flg(
 			bullet,flg_map_run_fi)
@@ -608,14 +642,14 @@ function update_dreadnought()
 		num_runw_hits>
 		levels[level].min_runw_hits
 	if min_fighters_hit
-		and time()-land_time>fly_secs then
+		and time()-land_last_t>fly_secs then
 		land_now=true
 	end
-	if time()-fast_time>.08 then
+	if time()-fast_last_t>.08 then
 		pal(11,rnd(16))
-		fast_time=time()
+		fast_last_t=time()
 	end
-	if time()-medi_time>.45 then
+	if time()-medm_last_t>.45 then
 		poke(0x5f1f,beacon_colr)
 		if beacon_colr==8then
 			beacon_colr=0x88
@@ -623,30 +657,31 @@ function update_dreadnought()
 			beacon_colr=8
 		end
 		if land_now then
-			if land_colr==0 then
-				land_colr=7
+			if land_now_txt_colr==0 then
+				land_now_txt_colr=7
 			else
-				land_colr=0
+				land_now_txt_colr=0
 			end
 		end
-		medi_time=time()
+		medm_last_t=time()
 	end
 end
 
 function update_fighters()
-	if	not landed 
+	if not landed
+		and not takingoff 
 		and #wave.locns==0
-		and time()-wave_time>wave_wait 
+		and time()-wave_last_t>wave_wait 
 		then
-			wave_time=time()
+			wave_last_t=time()
 			wave_wait=3+rnd(6)
 			launch_wave()
 	end
 
-	local form=forms[wave.form]
+	local formtn=formtn[wave.formtn]
 	foreach(wave.locns, 
 		function(l)
-			form.move(l)
+			formtn.move(l)
 			local fighter_offscreen=
 				(wave.right and l.x<cam_x-16)
 				or (not wave.right and l.x>cam_x+144) 
@@ -655,12 +690,12 @@ function update_fighters()
 			end
 	end)
 	
-		-- fire stuff maybe
+	-- fire stuff maybe
 	if #wave.locns>1 
-		and time()-wave_fire_time>
+		and time()-wave_fire_last_t>
 			wave_fire_wait 
 		then
-			wave_fire_time=time()
+			wave_fire_last_t=time()
 			wave_fire_wait=rnd(25)/10
 			local i=flr(rnd(#wave.locns))+1
 			local l=wave.locns[i]
@@ -672,16 +707,58 @@ function update_fighters()
 
 end
 
-function update_destroy_dreadnought()
-	if time()-medi_time>1.2
+function update_bonus()
+	if time()-medm_last_t>1.2
 		or btnp(4)
 		or btnp(❎) then
-		medi_time=time()
+		medm_last_t=time()
 		wave_idx+=1
 	end
-	if wave_idx==3 then
-		init_ready()
+	if wave_idx==7 then
+		init_destroy_dreadnought()	
+	end
+end
+
+function update_destroy_dreadnought()
+	update_cam(true)
+	update_manta()
+	animate_manta()
+	update_bullets()
+	update_explosions()
+	if manta.dx<0 then
+		if rnd(100)<1 then
+			start_roll=true
+		end	
+		if start_roll 
+			and animate_manta_spin(false) then
+			start_roll=false
+		end
+		if time()-medm_last_t>expl_wait
+			then
+			medm_last_t=time()
+			expl_wait-=0.0002
+			for y=0,9 do
+				local m=mget(expl_at_x,y)
+				if m>12 then
+					if rnd(9)<1 then
+						destroy_obstacle({
+							sp=1,mx=expl_at_x,my=y
+						})
+					else
+						mset(expl_at_x,y,99)
+					end				
+					mset(expl_at_x+1,y,67)
+					mset(expl_at_x+2,y,0)
+				end
+				mset(expl_at_x+2,y,0)
+			end
+			expl_at_x-=1
+		end
 	end	
+	if manta.x<16 then
+		level+=1
+		init_ready()
+	end
 end
 -->8
 --draw
@@ -705,8 +782,8 @@ function draw_title()
 		title_drawn=true
 	end
 	
-	if time()-fast_time>.085 then
-		fast_time=time()
+	if time()-fast_last_t>.085 then
+		fast_last_t=time()
 		pal(9,title_colrs[1],1)
 		pal(10,title_colrs[2],1)		
 		pal(7,title_colrs[3],1)
@@ -730,7 +807,7 @@ function draw_ready()
 		print(tx,64-#tx*2,57,7,9)
 		tx=manta.lives.."    left"
 		outline(tx,64-#tx*2,68,7,9,4)
-		spr(manta.sp,54,67,1,1,manta.flp)
+		spr(manta.sp,54,67,1,1,manta.flp_h)
 	else
 		tx="game over!"
 		print(tx,64-#tx*2,56,7)
@@ -738,19 +815,7 @@ function draw_ready()
 end
 
 function draw_game()
-	cls()
-
-	--shadow colr
-	poke(0x5f15,0x85)
-
-	--manta colr
-	poke(0x5f1a,levels[level].colr_manta)
-	poke(0x5f19,levels[level].colr_manta2)
-
-	--dreadnought colr
-	poke(0x5f16,levels[level].colr_main)
-	poke(0x5f1d,levels[level].colr_shad)
-	
+	cls()	
 	draw_stars()
 	draw_dreadnought()
 	draw_stars_bodge()
@@ -765,16 +830,20 @@ function draw_hud()
 	if dbg then
 		print("cpu "..stat(1)*100,cam_x+41,-39,2)
 		print("fps "..stat(7),cam_x+90,-32,2)
-		print("deb "..manta.x,cam_x+90,-40,2)
+		local xx="f"
+		if manta.flp_h then
+			xx="t"
+		end
+		print("dbg "..xx,cam_x+90,-40,2)
 	end
 	print("1 up ♥"..manta.lives,cam_x+1,-39,7)
 	print(manta.points,cam_x+1,-31,7)
 	if land_now then
-		print("land now!",cam_x+53,-31,land_colr)
+		print("land now!",cam_x+53,-31,land_now_txt_colr)
 	else
-		if time()-slow_time>3 then
-			if time()-slow_time>6 then
-				slow_time=time()
+		if time()-slow_last_t>3 then
+			if time()-slow_last_t>6 then
+				slow_last_t=time()
  		end
  		print("picidium",cam_x+52,-31,13)
  	else
@@ -890,6 +959,14 @@ function draw_bonus()
 end
 
 function draw_destroy_dreadnought()
+	cls()
+	draw_stars()
+	draw_dreadnought()
+	draw_stars_bodge()
+	draw_bullets()
+	draw_explosions()		
+	draw_manta()
+	draw_hud()
 end
 
 function spr_shad(depth,sp,
@@ -943,49 +1020,70 @@ function animate_manta()
 			manta.sp=sp_level
 			manta.turning=false
 			manta.flp_h=manta.dx<1 		
-		elseif time()-manta.anim_time>.04 then
-			manta.anim_time=time()
+		elseif time()-manta.anim_last_t>.04 then
+			manta.anim_last_t=time()
 			manta.sp+=1
 		end
 	end
 	if manta.landing
 		and manta.h>0
-		and time()-stop_time>.3 then
-		manta.h-=.5
-		stop_time=time()
+		and time()-stop_last_t>.3 then
+		stop_last_t=time()
+		manta.h-=1
+	elseif manta.takingoff then 
+		if time()-stop_last_t>.3 then
+			stop_last_t=time()
+			if manta.h<4	then
+				stop_last_t=time()
+				manta.h+=1
+			end
+		end
 	end
 end
 
-function animate_manta_roll(right)
-	if time()-manta.anim_time>.05 then
-		manta.anim_time=time()
-		if manta.sp==1 then
-			manta.flp=right
-			manta.sp=12
+function animate_manta_spin(r)
+	if time()-manta.anim_last_t>.05 then
+		manta.anim_last_t=time()
+		local st=spin_ani[spin_ani_i]
+		manta.sp=st[1]
+		
+		local f=st[2]
+		if r then
+			f=not f
+		end
+		manta.flp_h=f
+		
+		if spin_rev then
+			spin_ani_i-=1
+			if spin_ani_i==0 then
+				spin_ani_i=2
+				spin_rev=false
+				return true
+			end
 		else
-			manta.sp-=1
-			if manta.sp==6 then
-				manta.sp=1
-				manta.flp=not right
+			spin_ani_i+=1
+			if spin_ani_i==#spin_ani then
+				spin_ani_i=#spin_ani-1
+				spin_rev=true
 			end
 		end
 	end
 end
 
 function explode(obj,r)
-foreach(obj.fireballs, 
-	function(f)
-		if not f.active then
-			f.active=true
-			f.x=obj.x
-			f.y=obj.y+1			
-			f.dx=-.5+rnd(1)
-			f.dy=-.5+rnd(1)
-			f.mass=.5+rnd(1)
-			f.r=.5+rnd(r)
-			f.c=6
-		end
-	end)
+	foreach(obj.fireballs, 
+		function(f)
+			if not f.active then
+				f.active=true
+				f.x=obj.x
+				f.y=obj.y+1			
+				f.dx=-.5+rnd(1)
+				f.dy=-.5+rnd(1)
+				f.mass=.5+rnd(1)
+				f.r=.5+rnd(r)
+				f.c=6
+			end
+		end)
 end
 
 -->8
@@ -1003,9 +1101,10 @@ function reset_manta()
 	manta.turning=false
 	manta.destroyed=false
 	manta.landing=false
+	manta.takingoff=false
 end
 
-function update_map(level)
+function set_map(level)
 	local adr=0x2400
 	if (level>5) then
 		adr=0x1000
@@ -1013,6 +1112,19 @@ function update_map(level)
 	end
 	adr+=0x0200*level
 	px9_mdecomp(0,0,adr,mget,mset)
+end
+
+function set_colrs()
+	--shadow colr
+	poke(0x5f15,0x85)
+
+	--manta colr
+	poke(0x5f1a,levels[level].colr_manta)
+	poke(0x5f19,levels[level].colr_manta2)
+
+	--dreadnought colr
+	poke(0x5f16,levels[level].colr_main)
+	poke(0x5f1d,levels[level].colr_shad)
 end
 
 function new_bullet(orig, sp)
@@ -1054,7 +1166,7 @@ function destroy_manta()
 	end
 	manta.dx=dx
 	manta.lives-=1
-	destroy_time=time()
+	destroy_last_t=time()
 end
 
 function destroy_obstacle(hit)
@@ -1146,13 +1258,13 @@ function launch_wave()
 	if wave.right then
 		dx=-1
 	end
-	local form=forms[wave.form]
+	local formtn=formtn[wave.formtn]
 	for i=1,5 do
-		local y=form.y[i]
+		local y=formtn.y[i]
 		if y~=-1 then
 			add(wave.locns,{
 				i=i,
-				x=x+form.xd[i],
+				x=x+formtn.xd[i],
 				y=y,
 				dx=dx
 			})
@@ -1488,14 +1600,14 @@ __gfx__
 00000000000000000000000000000000000000006ddbbb776666d556666d766666676666666667d66d5666666666666666666666666666666666666666666666
 00000000000000000000000000000000000000006d7777776666d55dddd66dddddd7666666666655667777776666666666666666666666666666666666666666
 0000000000000000000000000000000000000000666666666666d000000000000007666666666666666666666666666666666666666666666666666666666666
-6666d550000000000007666600000000666666666666666666666666566666666666666666666666666666666666666666666666666666667777000000777700
-6666d55000000000066766660000000066666666666666667676767655667676666666666666666666666666666666666666666666666666aaaaa77007999970
-6666d5500000000006676666000000006666666666666666666666665666666666666666666666666666666666666666666666666666666609999900779aa997
-6666d550000000000667666600000000666666666666666667666666666566666666777777777777777766666666dddddddddddddddd666600aaaaaa99aa77a9
-6666d550000000000667666600000000666666667d667d66677677766665567666676666666666666666d666666d7070707070707070766600aaaaaa77aa99a7
-6666d6577707770777676666000000006666666665566556676666665665666666676666666666666666d666666dd0d0d0d0d0d0d0d0766609999900997aa779
-6666d57d067d067d067766660000000067d67d6666666666666666665566666666676666666666666666d666666d070707070707070776667777a77009777790
-6666d65777d777d777676666000000006655655666666666767676765666767666676666666666666666d666666d0d0d0d0d0d0d0d0d7666aaaa000000999900
+6666d550000000000007666665500000666666666666666666666666566666666666666666666666666666666666666666666666666666667777000000777700
+6666d550000000000667666666d6655066666666666666667676767655667676666666666666666666666666666666666666666666666666aaaaa77007999970
+6666d55000000000066766666655dd006666666666666666666666665666666666666666666666666666666666666666666666666666666609999900779aa997
+6666d55000000000066766666dd60000666666666666666667666666666566666666777777777777777766666666dddddddddddddddd666600aaaaaa99aa77a9
+6666d550000000000667666666665000666666667d667d66677677766665567666676666666666666666d666666d7070707070707070766600aaaaaa77aa99a7
+6666d657770777077767666665566d006666666665566556676666665665666666676666666666666666d666666dd0d0d0d0d0d0d0d0766609999900997aa779
+6666d57d067d067d067766666dd6550067d67d6666666666666666665566666666676666666666666666d666666d070707070707070776667777a77009777790
+6666d65777d777d777676666666660006655655666666666767676765666767666676666666666666666d666666d0d0d0d0d0d0d0d0d7666aaaa000000999900
 6666d55ddd0ddd0ddd676666677766666f166f1600000000666666667777777766676666a700007a6666d666666d70707070707070707666aaaaaaaa00777700
 6666d55000000000066766667696d55661666166777777776666666667666766666766660a7007a06666d666666dd0d0d0d0d0d0d0d076669a0009a007aaaaa0
 6666757070707070767766667969d555665566550000000066666666677777766667666600a77a006666d666666d0707070707070707766609a09a007a9999a9
@@ -1504,14 +1616,14 @@ __gfx__
 6666d65777077707776766667696d55561666166000000006666666667ddddd66667666607a00a706666d666666dd0d0d0d0d0d0d0d0766609a09a007a7777a9
 6666d57d067d067d067766667969d55566556655777777776666666667666d66666766667a0000a76666d666666d070707070707070776669a0009a00aaaaa90
 6666d65777077707776766666ddd6655665666560000000066666666dddddddd66676666000000006666d666666d0d0d0d0d0d0d0d0d7666aaaaaaaa00999900
-6666d55ddd0ddd0ddd676666000000006666666600000000f16666666655656666676666666666666666d666666d70707070707070707666077777a077777770
-6666d55000000000066766660000000066666666000000006dd666666505555666676666666666666666d666666dd0d0d0d0d0d0d0d0766609a999409a99a990
-6666d55000000000066766660000000066666666777777771166655655d506d066676666666666666666d666666d0707070707070707766600a000000a90a900
-6666d55000000000066766660000000066666666000000006dd666665d0d005666676666666666666666d666666d0d0d0d0d0d0d0d0d76667777777aaaaaaaaa
-6666d5500000000006676666000000007d667d660000000011556556650656556666dddddddddddddddd666666667777777777777777666699a999949a99a944
-6666d55000000000066766660000000065566556777777776dd5556665006d0566666666666666666666666666666666666666666666666600a000000a90a900
-6666d0000000000000076666000000006666666600000000f166555656505556666666666666666666666666666666666666666666666666077777a077777770
-6666d00000000000000766660000000066666666000000006dd66656666556666666666666666666666666666666666666666666666666660999994099999990
+6666d55ddd0ddd0ddd676666666666666666666600000000f16666666655656666676666666666666666d666666d70707070707070707666077777a077777770
+6666d55000000000066766666666655566666666000000006dd666666505555666676666666666666666d666666dd0d0d0d0d0d0d0d0766609a999409a99a990
+6666d55000000000066766666666dd6666666666777777771166655655d506d066676666666666666666d666666d0707070707070707766600a000000a90a900
+6666d55000000000066766666666666666666666000000006dd666665d0d005666676666666666666666d666666d0d0d0d0d0d0d0d0d76667777777aaaaaaaaa
+6666d5500000000006676666666655667d667d660000000011556556650656556666dddddddddddddddd666666667777777777777777666699a999949a99a944
+6666d550000000000667666666666dd665566556777777776dd5556665006d0566666666666666666666666666666666666666666666666600a000000a90a900
+6666d0000000000000076666666655566666666600000000f166555656505556666666666666666666666666666666666666666666666666077777a077777770
+6666d0000000000000076666666666dd66666666000000006dd66656666556666666666666666666666666666666666666666666666666660999994099999990
 0000000000000000000766666666d0006666666600000000666665566666666666676666000000006666d666000000000000000009aaa9997777770000077770
 0000000000000000000766666666d0006666666600000000666666666660565666676666000000006666d66600000000000000009aaa9000007aaa00777aaa70
 0000000000000000000766666666d000666666660000000066666556665d056666676666000770006666d666000000000000000007d000000777770794949499
