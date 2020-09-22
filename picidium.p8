@@ -5,14 +5,6 @@ dbg=false
 
 --init
 
---todo: fix/setup points
--- some say.. 10 small surface
--- 25 large surface
--- 100 ship runway
--- 100-1000 fighter 
--- 100 wave ann bonus
--- 10,000 bonus manta
-
 function _init()
 	init_title()
 	init_logo()
@@ -100,6 +92,7 @@ function init_manta()
 		coll_y_max=7,
 		points=0,
 		lives=3,
+		waves_destroyed=0,
 		fireballs={},
 		landing,
 		takingoff
@@ -263,7 +256,8 @@ function init_fighters()
 		formtn=6 --middle t
 	}
 	wave={
-		locns={}
+		locns={},
+		togo=1
 	}
 end
 
@@ -689,6 +683,10 @@ function update_fighters()
 				del(wave.locns,l)
 			end
 	end)
+	if wave.togo==0 then
+		wave.togo=-1
+		manta.waves_destroyed+=1
+	end
 	
 	-- fire stuff maybe
 	if #wave.locns>1 
@@ -713,6 +711,10 @@ function update_bonus()
 		or btnp(❎) then
 		medm_last_t=time()
 		wave_idx+=1
+	end
+	if wave_idx==4 and not manta.wb then
+		manta.wb=manta.waves_destroyed*100
+		manta.points+=shr(manta.wb,16)
 	end
 	if wave_idx==7 then
 		init_destroy_dreadnought()	
@@ -823,32 +825,44 @@ function draw_game()
 	draw_explosions()		
 	draw_manta()
 	draw_fighters()
-	draw_hud()
+	draw_hud(-39)
 end
 
-function draw_hud()
-	if dbg then
-		print("cpu "..stat(1)*100,cam_x+41,-39,2)
-		print("fps "..stat(7),cam_x+90,-32,2)
-		local xx="f"
-		if manta.flp_h then
-			xx="t"
-		end
-		print("dbg "..xx,cam_x+90,-40,2)
+function draw_hud(offset_y)
+	if not offset_y then
+		offset_y=1
+		rectfill(cam_x,0,cam_x+128,16,0)
 	end
-	print("1 up ♥"..manta.lives,cam_x+1,-39,7)
-	print(manta.points,cam_x+1,-31,7)
+	if dbg then
+		print("cpu "..stat(1)*100,cam_x+41,0+offset_y,2)
+		print("fps "..stat(7),cam_x+90,8+offset_y,2)
+		local dd=wave.togo
+		dd=dd.." "
+		dd=dd..manta.waves_destroyed
+		print("dbg "..dd,cam_x+90,0+offset_y,2)
+	end
+	print("1 up ♥"..manta.lives,cam_x+1,0+offset_y,7)
+
+	--draw points
+	local p=0
+	local mp=manta.points
+	for px=7,0,-1 do
+		p=shl(mp%0x0.000a,16)
+		mp/=10
+		print(p,cam_x+(px*4)+1,8+offset_y,7)
+	end
+
 	if land_now then
-		print("land now!",cam_x+53,-31,land_now_txt_colr)
+		print("land now!",cam_x+53,8+offset_y,land_now_txt_colr)
 	else
 		if time()-slow_last_t>3 then
 			if time()-slow_last_t>6 then
 				slow_last_t=time()
  		end
- 		print("picidium",cam_x+52,-31,13)
+ 		print("picidium",cam_x+52,8+offset_y,13)
  	else
  		print(level.."."..levels[level].name,
- 			cam_x+52,-31,7)
+ 			cam_x+52,8+offset_y,7)
 		end
 	end
 end
@@ -934,10 +948,11 @@ function draw_bonus()
 	local tx="destruction sequence primed!"
 	if wave_idx==1 then
 		default_colrs()
+		cam_x=0
 		camera(0,0)
 		cls()
-	else
 		draw_hud()
+	else
 		if wave_idx==2 then
 			outline(tx,64-#tx*2,30,7,8,4)
 		elseif wave_idx==3 then
@@ -945,15 +960,18 @@ function draw_bonus()
 			outline(tx,64-#tx*2,44,7,8,4)
 		elseif wave_idx==4 then
 			--todo: wave bonus points
-			tx="0".." x 00 = 0000";
+			tx="100 x "..manta.waves_destroyed
+			tx=tx.." = "..manta.waves_destroyed*100
 			print(tx,64-#tx*2,58,7,8,4)
 		elseif wave_idx==5 then
-			tx="ship destruct bonus:"
-			outline(tx,64-#tx*2,72,7,8,4)
+			--tx="ship destruct bonus:"
+			--outline(tx,64-#tx*2,72,7,8,4)
+			draw_hud()
 		elseif wave_idx==6 then
 			--todo: ship bonus points
-			tx="0".." x 00 = 0000";
-			print(tx,64-#tx*2,86,7,8,4)
+			--tx="100 x "..00
+			--tx=tx.." = 0000";
+			--print(tx,64-#tx*2,86,7,8,4)
 		end
 	end
 end
@@ -966,7 +984,7 @@ function draw_destroy_dreadnought()
 	draw_bullets()
 	draw_explosions()		
 	draw_manta()
-	draw_hud()
+	draw_hud(-39)
 end
 
 function spr_shad(depth,sp,
@@ -1098,10 +1116,12 @@ function reset_manta()
 	manta.flp_v=false
 	manta.dx=1
 	manta.dy=0
+	manta.waves_destroyed=0
 	manta.turning=false
 	manta.destroyed=false
 	manta.landing=false
 	manta.takingoff=false
+	manta.wb=false
 end
 
 function set_map(level)
@@ -1180,7 +1200,7 @@ function destroy_obstacle(hit)
 		e.fireballs)
 	add(explosions,e)
 	explode(e,obst.fireball_r)
-	manta.points+=obst.points
+	manta.points+=shr(obst.points,16)
 	if obst.points>25 then
 		num_runw_hits+=1	
 	end
@@ -1198,8 +1218,9 @@ function destroy_fighter(hit_fi)
 		e.fireballs)
 	add(explosions,e)
 	explode(e,5)
-	manta.points+=1000
+	manta.points+=shr(1000,16)
 	sfx(1)
+	wave.togo-=1
 	del(wave.locns,hit_fi)
 end
 
@@ -1250,6 +1271,7 @@ function launch_wave()
 	local lf=levels[level].fighters
 	wave=fighters[lf[wave_idx]]
 	wave.locns={}
+	wave.togo=0
 	local x=manta.x-64-16
 	if wave.right then
 		x=manta.x+64
@@ -1262,6 +1284,7 @@ function launch_wave()
 	for i=1,5 do
 		local y=formtn.y[i]
 		if y~=-1 then
+			wave.togo+=1
 			add(wave.locns,{
 				i=i,
 				x=x+formtn.xd[i],
@@ -1355,9 +1378,11 @@ function move_right_zip(l)
 		else
 			if l.y<35 then
 				l.y+=.5
-			end		end
+			end	
+		end
 	end
 end
+
 -->8
 --coll
 
