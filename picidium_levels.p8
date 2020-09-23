@@ -26,7 +26,7 @@ function _init()
 			a=0x2400+(l*0x0200)
 		end
 		
-		pr("store at "..tostr(a,true).." "..g)		
+		pr("store "..clen.." at "..tostr(a,true).." "..g)		
 		cstore(a,0x1000,clen,g)
 		
 	end
